@@ -163,7 +163,7 @@ public abstract class BasePayService<PC extends PayConfigStorage> implements Pay
      * @return 对应页面重定向信息
      */
     @Override
-    public <O extends PayOrder> String toPay(O order) {
+public <O extends PayOrder> String toPay(O order) {
         if (StringUtils.isNotEmpty(order.getSubject()) && order.getSubject().contains("'")) {
             order.setSubject(order.getSubject().replace("'", ""));
         }

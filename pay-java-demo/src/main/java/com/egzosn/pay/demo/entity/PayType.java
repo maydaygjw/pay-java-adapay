@@ -32,6 +32,9 @@ import com.egzosn.pay.wx.bean.WxTransactionType;
 import com.egzosn.pay.wx.youdian.api.WxYouDianPayConfigStorage;
 import com.egzosn.pay.wx.youdian.api.WxYouDianPayService;
 import com.egzosn.pay.wx.youdian.bean.YoudianTransactionType;
+import com.egzosn.pay.adapay.api.AdapayPayConfigStorage;
+import com.egzosn.pay.adapay.api.AdapayPayService;
+import com.egzosn.pay.adapay.bean.AdapayTransactionType;
 
 
 /**
@@ -266,6 +269,39 @@ public enum PayType implements BasePayType {
         @Override
         public TransactionType getTransactionType(String transactionType) {
             return PayPalTransactionType.valueOf(transactionType);
+        }
+
+
+    }, adapay {
+        @Override
+        public PayService getPayService(ApyAccount apyAccount) {
+            AdapayPayConfigStorage storage = new AdapayPayConfigStorage();
+            // 设置应用ID
+            storage.setAppId(apyAccount.getAppId());
+            // 设置API Key (生产环境)
+            storage.setApiKey(apyAccount.getPartner());
+            // 设置API Mock Key (测试环境)
+            storage.setApiMockKey(apyAccount.getPrivateKey());
+            // 设置RSA私钥 (从seller字段获取，实际应用中应从配置文件读取完整私钥)
+            storage.setRsaPrivateKey(apyAccount.getSeller());
+            // 设置通知和返回URL
+            storage.setNotifyUrl(apyAccount.getNotifyUrl());
+            storage.setReturnUrl(apyAccount.getReturnUrl());
+            // 设置测试模式
+            storage.setProdMode(!apyAccount.isTest());
+            storage.setDebug(apyAccount.isTest());
+            
+            try {
+                final AdapayPayService adapayPayService = new AdapayPayService(storage);
+                return adapayPayService;
+            } catch (Exception e) {
+                throw new RuntimeException("初始化Adapay支付服务失败", e);
+            }
+        }
+
+        @Override
+        public TransactionType getTransactionType(String transactionType) {
+            return AdapayTransactionType.valueOf(transactionType);
         }
 
 

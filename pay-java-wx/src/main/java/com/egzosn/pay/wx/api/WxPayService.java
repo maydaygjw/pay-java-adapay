@@ -95,7 +95,7 @@ public class WxPayService extends BasePayService<WxPayConfigStorage> implements 
      *
      * @param payConfigStorage 微信对应的支付配置
      */
-    public WxPayService(WxPayConfigStorage payConfigStorage) {
+public WxPayService(WxPayConfigStorage payConfigStorage) {
         super(payConfigStorage);
     }
 

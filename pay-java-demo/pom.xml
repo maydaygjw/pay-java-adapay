@@ -58,6 +58,16 @@
             <artifactId>pay-java-union</artifactId>
             <version>${revision}</version>
         </dependency>
+        <dependency>
+            <groupId>com.egzosn</groupId>
+            <artifactId>pay-java-union</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.egzosn</groupId>
+            <artifactId>pay-java-adapay</artifactId>
+            <version>${revision}</version>
+        </dependency>
         <!--/支付-->
         <dependency>
             <groupId>com.egzosn</groupId>
@@ -135,6 +145,26 @@
                 <includes>
                     <include>*</include>
                     <include>*/**</include>
+                </includes>
+                <excludes>
+                    <exclude>*.pfx</exclude>
+                    <exclude>*.keystore</exclude>
+                    <exclude>*.jks</exclude>
+                    <exclude>*.p12</exclude>
+                    <exclude>*.jar</exclude>
+                    <exclude>*.zip</exclude>
+                </excludes>
+            </resource>
+            <resource>
+                <filtering>false</filtering>
+                <directory>src/main/resources</directory>
+                <includes>
+                    <include>*.pfx</include>
+                    <include>*.keystore</include>
+                    <include>*.jks</include>
+                    <include>*.p12</include>
+                    <include>*.jar</include>
+                    <include>*.zip</include>
                 </includes>
             </resource>
         </resources>

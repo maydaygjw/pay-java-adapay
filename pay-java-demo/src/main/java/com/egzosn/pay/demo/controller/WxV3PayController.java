@@ -52,7 +52,7 @@ public class WxV3PayController {
 
 
 //    @PostConstruct  //没有证书的情况下注释掉，避免启动报错
-    public void init() {
+    public void init() throws IOException {
         com.egzosn.pay.wx.v3.api.WxPayConfigStorage wxPayConfigStorage = new com.egzosn.pay.wx.v3.api.WxPayConfigStorage();
         wxPayConfigStorage.setAppId("wx5ce9f1a2****");
         wxPayConfigStorage.setMchId("170330*****");
@@ -70,7 +70,7 @@ public class WxV3PayController {
         wxPayConfigStorage.setInputCharset("utf-8");
         //使用证书时设置为true
 //        wxPayConfigStorage.setCertSign(true);
-        /使用P12证书方式, 商户API证书 https://pay.weixin.qq.com/wiki/doc/apiv3/wechatpay/wechatpay3_1.shtml
+        //使用P12证书方式, 商户API证书 https://pay.weixin.qq.com/wiki/doc/apiv3/wechatpay/wechatpay3_1.shtml
 //        wxPayConfigStorage.setApiClientKeyP12("http://pay.egzosn.com/yifenli_mall.p12");
 //        wxPayConfigStorage.setCertStoreType(CertStoreType.URL);
         //使用pem证书方式
