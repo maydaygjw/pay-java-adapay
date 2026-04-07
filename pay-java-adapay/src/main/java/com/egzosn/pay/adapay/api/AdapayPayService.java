@@ -6,8 +6,11 @@ import com.egzosn.pay.common.bean.result.PayException;
 import com.egzosn.pay.common.bean.result.PayError;
 import com.egzosn.pay.common.exception.PayErrorException;
 import com.egzosn.pay.common.http.HttpConfigStorage;
+import com.egzosn.pay.common.util.DateUtils;
+import com.egzosn.pay.common.util.str.StringUtils;
 import com.egzosn.pay.adapay.bean.AdapayTransactionType;
 import com.egzosn.pay.adapay.bean.AdapayRefundResult;
+import com.huifu.adapay.model.Bill;
 import com.huifu.adapay.model.Payment;
 import com.huifu.adapay.model.Refund;
 import com.huifu.adapay.model.Checkout;
@@ -382,9 +385,26 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
      */
     @Override
     public Map<String, Object> downloadBill(Date billDate, BillType billType) {
-        // Adapay的账单下载需要通过Bill API实现
-        // 这里返回提示信息
-        throw new PayErrorException(new PayException("-1", "请使用Adapay官方SDK的Bill API下载账单"));
+        try {
+            Map<String, Object> params = new HashMap<>(4);
+            String datePattern = DateUtils.YYYYMMDD;
+            if (billType != null && StringUtils.isNotEmpty(billType.getDatePattern())) {
+                datePattern = billType.getDatePattern();
+            }
+            params.put("bill_date", DateUtils.formatDate(billDate, datePattern));
+
+            // Adapay将特殊账单能力通过自定义功能号区分，例如余额支付账单。
+            if (billType != null && StringUtils.isNotEmpty(billType.getCustom())) {
+                params.put("adapay_func_code", billType.getCustom());
+            }
+
+            if (payConfigStorage.getMerchantKey() != null) {
+                return Bill.download(params, payConfigStorage.getMerchantKey());
+            }
+            return Bill.download(params);
+        } catch (BaseAdaPayException e) {
+            throw new PayErrorException(new PayException("-1", "下载Adapay账单失败: " + e.getMessage()));
+        }
     }
 
     /**
