@@ -4,12 +4,12 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
         <artifactId>pay-java-parent</artifactId>
-        <groupId>com.egzosn</groupId>
-         <version>${revision}</version>
+        <groupId>com.holuntech</groupId>
+         <version>2.14.14-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
     <packaging>war</packaging>
-    <groupId>com.egzosn</groupId>
+    <groupId>com.holuntech</groupId>
     <artifactId>pay-java-demo</artifactId>
 
     <properties>
@@ -22,55 +22,55 @@
     <dependencies>
         <!--支付-->
         <dependency>
-            <groupId>com.egzosn</groupId>
+            <groupId>com.holuntech</groupId>
             <artifactId>pay-java-payoneer</artifactId>
-            <version>${revision}</version>
+            <version>2.14.14-SNAPSHOT</version>
         </dependency>
         <dependency>
-            <groupId>com.egzosn</groupId>
+            <groupId>com.holuntech</groupId>
             <artifactId>pay-java-wx</artifactId>
-            <version>${revision}</version>
+            <version>2.14.14-SNAPSHOT</version>
         </dependency>
 
         <dependency>
-            <groupId>com.egzosn</groupId>
+            <groupId>com.holuntech</groupId>
             <artifactId>pay-java-ali</artifactId>
-            <version>${revision}</version>
+            <version>2.14.14-SNAPSHOT</version>
         </dependency>
 
         <dependency>
-            <groupId>com.egzosn</groupId>
+            <groupId>com.holuntech</groupId>
             <artifactId>pay-java-wx-youdian</artifactId>
-            <version>${revision}</version>
+            <version>2.14.14-SNAPSHOT</version>
         </dependency>
         <dependency>
-            <groupId>com.egzosn</groupId>
+            <groupId>com.holuntech</groupId>
             <artifactId>pay-java-fuiou</artifactId>
-            <version>${revision}</version>
+            <version>2.14.14-SNAPSHOT</version>
         </dependency>
         <dependency>
-            <groupId>com.egzosn</groupId>
+            <groupId>com.holuntech</groupId>
             <artifactId>pay-java-paypal</artifactId>
-            <version>${revision}</version>
+            <version>2.14.14-SNAPSHOT</version>
         </dependency>
         <dependency>
-            <groupId>com.egzosn</groupId>
+            <groupId>com.holuntech</groupId>
             <artifactId>pay-java-union</artifactId>
-            <version>${revision}</version>
+            <version>2.14.14-SNAPSHOT</version>
         </dependency>
         <dependency>
-            <groupId>com.egzosn</groupId>
+            <groupId>com.holuntech</groupId>
             <artifactId>pay-java-union</artifactId>
-            <version>${revision}</version>
+            <version>2.14.14-SNAPSHOT</version>
         </dependency>
         <dependency>
-            <groupId>com.egzosn</groupId>
+            <groupId>com.holuntech</groupId>
             <artifactId>pay-java-adapay</artifactId>
-            <version>${revision}</version>
+            <version>2.14.14-SNAPSHOT</version>
         </dependency>
         <!--/支付-->
         <dependency>
-            <groupId>com.egzosn</groupId>
+            <groupId>com.holuntech</groupId>
             <artifactId>pay-java-web-support</artifactId>
         </dependency>
         <!-- spring -->

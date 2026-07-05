@@ -160,7 +160,6 @@ public class AdapayPayConfigStorage extends BasePayConfigStorage {
         return this;
     }
 
-    @Override
     public String getSeller() {
         // Adapay没有seller概念，返回merchantKey
         return merchantKey;

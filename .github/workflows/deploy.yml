@@ -1,0 +1,85 @@
+name: Build and Deploy to Aliyun Yunxiao
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Deployment version suffix, e.g. 2.14.14'
+        required: false
+        default: ''
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Generate Maven settings.xml
+        uses: whelk-io/maven-settings-xml-action@v22
+        with:
+          servers: |
+            [
+              {
+                "id": "1666-snapshot-nimFi5",
+                "username": "${{ secrets.ALIYUN_MAVEN_USERNAME }}",
+                "password": "${{ secrets.ALIYUN_MAVEN_PASSWORD }}"
+              }
+            ]
+          profiles: |
+            [
+              {
+                "id": "rdc",
+                "properties": {
+                  "altSnapshotDeploymentRepository": "1666-snapshot-nimFi5::default::https://holuntech-cn-shanghai.devops.aliyuncs.com/packages/api/protocol/maven/1666-snapshot-nimfi5"
+                },
+                "repositories": [
+                  {
+                    "id": "1666-snapshot-nimFi5",
+                    "url": "https://holuntech-cn-shanghai.devops.aliyuncs.com/packages/api/protocol/maven/1666-snapshot-nimfi5",
+                    "releases": { "enabled": "false" },
+                    "snapshots": { "enabled": "true" }
+                  }
+                ],
+                "pluginRepositories": [
+                  {
+                    "id": "1666-snapshot-nimFi5",
+                    "url": "https://holuntech-cn-shanghai.devops.aliyuncs.com/packages/api/protocol/maven/1666-snapshot-nimfi5",
+                    "releases": { "enabled": "false" },
+                    "snapshots": { "enabled": "true" }
+                  }
+                ]
+              }
+            ]
+          active_profiles: |
+            [
+              "rdc"
+            ]
+
+      - name: Determine SNAPSHOT version
+        id: version
+        run: |
+          BASE_VERSION=$(grep -oP '(?<=<revision>)[^<]+' pom.xml)
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            BASE_VERSION="${{ github.event.inputs.version }}"
+          fi
+          SNAPSHOT_VERSION="${BASE_VERSION}-SNAPSHOT"
+          echo "snapshot_version=${SNAPSHOT_VERSION}" >> $GITHUB_OUTPUT
+          echo "Deploying version: ${SNAPSHOT_VERSION}"
+
+      - name: Build and deploy
+        run: |
+          mvn clean deploy \
+            -DskipTests \
+            -Drevision=${{ steps.version.outputs.snapshot_version }}
