@@ -55,7 +55,11 @@ public class AdapayRefundResult extends BaseRefundResult {
 
     @Override
     public String getMsg() {
-        return errorMsg;
+        if (errorMsg != null && !errorMsg.isEmpty()) {
+            return errorMsg;
+        }
+        AdapayStatus status = getAdapayStatus();
+        return status == null ? null : status.getDescription();
     }
 
     @Override
@@ -157,5 +161,21 @@ public class AdapayRefundResult extends BaseRefundResult {
         if (refundAmt != null && !refundAmt.isEmpty()) {
             this.refundAmt = new BigDecimal(refundAmt);
         }
+    }
+
+    public AdapayStatus getAdapayStatus() {
+        return AdapayStatus.refund(status);
+    }
+
+    public boolean isSuccess() {
+        return AdapayStatus.REFUND_SUCCESS == getAdapayStatus();
+    }
+
+    public boolean isProcessing() {
+        return AdapayStatus.REFUND_PROCESSING == getAdapayStatus();
+    }
+
+    public boolean isFailed() {
+        return AdapayStatus.REFUND_FAILED == getAdapayStatus();
     }
 }

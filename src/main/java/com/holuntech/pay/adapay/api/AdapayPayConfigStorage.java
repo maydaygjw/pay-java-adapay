@@ -4,6 +4,9 @@ import com.egzosn.pay.common.api.BasePayConfigStorage;
 import com.huifu.adapay.Adapay;
 import com.huifu.adapay.model.MerConfig;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Adapay支付配置存储
  * 基于Adapay官方SDK实现
@@ -74,13 +77,18 @@ public class AdapayPayConfigStorage extends BasePayConfigStorage {
     /**
      * 商户配置Key (多商户模式使用)
      */
-    private String merchantKey = Adapay.defaultMerchantKey;
+    private String merchantKey;
+
+    /**
+     * 未显式设置merchantKey时，为当前配置生成的隔离Key。
+     */
+    private volatile String generatedMerchantKey;
 
     /**
      * 初始化Adapay SDK配置
      * 在使用前必须调用此方法
      */
-    public void initAdapayConfig() throws Exception {
+    public synchronized void initAdapayConfig() throws Exception {
         // 配置全局参数
         Adapay.debug = this.debug;
         Adapay.prodMode = this.prodMode;
@@ -88,22 +96,26 @@ public class AdapayPayConfigStorage extends BasePayConfigStorage {
         Adapay.apiBase = this.apiBase;
         Adapay.pageBase = this.pageBase;
         Adapay.deviceID = this.deviceId;
-        
-        if (this.rsaPublicKey != null && !this.rsaPublicKey.isEmpty()) {
-            Adapay.publicKey = this.rsaPublicKey;
-        }
+
+        // Adapay SDK的公钥和环境字段是静态全局值，必须按当前租户覆盖。
+        Adapay.publicKey = this.rsaPublicKey == null ? "" : this.rsaPublicKey;
 
         // 创建商户配置
         MerConfig merConfig = new MerConfig();
         merConfig.setApiKey(this.apiKey);
         merConfig.setApiMockKey(this.apiMockKey);
         merConfig.setRSAPrivateKey(this.rsaPrivateKey);
+        merConfig.setRSAPublicKey(this.rsaPublicKey);
+        merConfig.setDeviceId(this.deviceId);
 
         // 初始化SDK
-        if (merchantKey.equals(Adapay.defaultMerchantKey)) {
+        String effectiveMerchantKey = getMerchantKey();
+        if (Adapay.defaultMerchantKey.equals(effectiveMerchantKey)) {
             Adapay.initWithMerConfig(merConfig);
         } else {
-            Adapay.addMerConfig(merConfig, merchantKey);
+            Map<String, MerConfig> configs = new HashMap<String, MerConfig>(1);
+            configs.put(effectiveMerchantKey, merConfig);
+            Adapay.initWithMerConfigs(configs);
         }
     }
 
@@ -135,6 +147,12 @@ public class AdapayPayConfigStorage extends BasePayConfigStorage {
         return this;
     }
 
+    @Override
+    public void setKeyPrivate(String keyPrivate) {
+        super.setKeyPrivate(keyPrivate);
+        this.rsaPrivateKey = keyPrivate;
+    }
+
     public String getRsaPublicKey() {
         return rsaPublicKey;
     }
@@ -143,6 +161,12 @@ public class AdapayPayConfigStorage extends BasePayConfigStorage {
         this.rsaPublicKey = rsaPublicKey;
         setKeyPublic(rsaPublicKey);
         return this;
+    }
+
+    @Override
+    public void setKeyPublic(String keyPublic) {
+        super.setKeyPublic(keyPublic);
+        this.rsaPublicKey = keyPublic;
     }
 
     @Override
@@ -160,9 +184,17 @@ public class AdapayPayConfigStorage extends BasePayConfigStorage {
         return this;
     }
 
+    public AdapayPayConfigStorage setAppid(String appId) {
+        return setAppId(appId);
+    }
+
     public String getSeller() {
         // Adapay没有seller概念，返回merchantKey
         return merchantKey;
+    }
+
+    public AdapayPayConfigStorage setSeller(String seller) {
+        return setMerchantKey(seller);
     }
 
     @Override
@@ -177,7 +209,14 @@ public class AdapayPayConfigStorage extends BasePayConfigStorage {
 
     public AdapayPayConfigStorage setProdMode(boolean prodMode) {
         this.prodMode = prodMode;
+        super.setTest(!prodMode);
         return this;
+    }
+
+    @Override
+    public void setTest(boolean test) {
+        super.setTest(test);
+        this.prodMode = !test;
     }
 
     public boolean isDebug() {
@@ -226,7 +265,14 @@ public class AdapayPayConfigStorage extends BasePayConfigStorage {
     }
 
     public String getMerchantKey() {
-        return merchantKey;
+        if (merchantKey != null && !merchantKey.isEmpty()) {
+            return merchantKey;
+        }
+        if (generatedMerchantKey == null) {
+            String source = String.valueOf(appId) + ":" + String.valueOf(apiKey) + ":" + String.valueOf(apiMockKey);
+            generatedMerchantKey = "adapay_" + Integer.toHexString(source.hashCode());
+        }
+        return generatedMerchantKey;
     }
 
     public AdapayPayConfigStorage setMerchantKey(String merchantKey) {

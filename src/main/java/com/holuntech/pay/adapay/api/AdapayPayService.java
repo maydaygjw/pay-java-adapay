@@ -8,15 +8,18 @@ import com.egzosn.pay.common.exception.PayErrorException;
 import com.egzosn.pay.common.http.HttpConfigStorage;
 import com.egzosn.pay.common.util.DateUtils;
 import com.egzosn.pay.common.util.str.StringUtils;
+import com.holuntech.pay.adapay.bean.AdapayPayMessage;
 import com.holuntech.pay.adapay.bean.AdapayTransactionType;
 import com.holuntech.pay.adapay.bean.AdapayRefundResult;
+import com.holuntech.pay.adapay.bean.AdapayStatus;
+import com.huifu.adapay.core.util.AdapaySign;
 import com.huifu.adapay.model.Bill;
 import com.huifu.adapay.model.Payment;
 import com.huifu.adapay.model.Refund;
 import com.huifu.adapay.model.Checkout;
 import com.huifu.adapay.core.exception.BaseAdaPayException;
 
-import java.math.BigDecimal;
+import java.util.List;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -71,16 +74,33 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
     }
 
     /**
-     * 签名验证
-     * Adapay SDK内部已处理签名验证
+     * 签名验证。
+     * Adapay异步通知签名原文为data字段，签名字段为sign，算法为SHA1withRSA。
      *
      * @param params 待验证的参数
      * @param sign 签名
      * @return 验证结果
      */
     public boolean signVerify(Map<String, Object> params, String sign) {
-        // Adapay SDK内部会验证签名
-        return true;
+        if (params == null) {
+            return false;
+        }
+        String data = getString(params, "data");
+        String signValue = StringUtils.isNotEmpty(sign) ? sign : getString(params, "sign");
+        String publicKey = payConfigStorage.getRsaPublicKey();
+        if (StringUtils.isEmpty(publicKey)) {
+            publicKey = payConfigStorage.getKeyPublic();
+        }
+        if (StringUtils.isEmpty(data) || StringUtils.isEmpty(signValue) || StringUtils.isEmpty(publicKey)) {
+            return false;
+        }
+        try {
+            String charset = StringUtils.isEmpty(payConfigStorage.getInputCharset()) ? "UTF-8" : payConfigStorage.getInputCharset();
+            return AdapaySign.verifySign(data, signValue, publicKey, charset);
+        } catch (Exception e) {
+            LOG.warn("Adapay callback sign verify failed", e);
+            return false;
+        }
     }
 
     /**
@@ -103,7 +123,7 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
      * @return 是否验证成功
      */
     public boolean verify(Map<String, Object> params) {
-        return signVerify(params, (String) params.get("sign"));
+        return signVerify(params, getString(params, "sign"));
     }
 
     /**
@@ -114,6 +134,9 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
      */
     @Override
     public boolean verify(NoticeParams noticeParams) {
+        if (noticeParams == null) {
+            return false;
+        }
         return verify(noticeParams.getBody());
     }
 
@@ -158,25 +181,20 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
      */
     @Override
     public Map<String, Object> orderInfo(PayOrder order) {
-        try {
-            Map<String, Object> params = buildPaymentParams(order);
-            
-            // 根据交易类型选择不同的支付方式
-            String payChannel = order.getTransactionType().getType();
-            params.put("pay_channel", payChannel);
-            
-            // 调用Adapay SDK创建支付
-            Map<String, Object> result;
-            if (payConfigStorage.getMerchantKey() != null) {
-                result = Payment.create(params, payConfigStorage.getMerchantKey());
-            } else {
-                result = Payment.create(params);
+        final Map<String, Object> params = buildPaymentParams(order);
+
+        // 根据交易类型选择不同的支付方式
+        String payChannel = order.getTransactionType().getType();
+        params.put("pay_channel", payChannel);
+
+        Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return Payment.create(params, payConfigStorage.getMerchantKey());
             }
-            
-            return result;
-        } catch (BaseAdaPayException e) {
-            throw new PayErrorException(new PayException("-1", "创建Adapay支付订单失败: " + e.getMessage()));
-        }
+        }, "创建Adapay支付订单失败");
+        enrichPaymentStatus(result, null);
+        return result;
     }
 
     /**
@@ -186,21 +204,16 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
      * @return 返回收银台URL
      */
     public Map<String, Object> checkoutPay(PayOrder order) {
-        try {
-            Map<String, Object> params = buildPaymentParams(order);
-            
-            // 调用Checkout API
-            Map<String, Object> result;
-            if (payConfigStorage.getMerchantKey() != null) {
-                result = Checkout.create(params, payConfigStorage.getMerchantKey());
-            } else {
-                result = Checkout.create(params);
+        final Map<String, Object> params = buildPaymentParams(order);
+
+        Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return Checkout.create(params, payConfigStorage.getMerchantKey());
             }
-            
-            return result;
-        } catch (BaseAdaPayException e) {
-            throw new PayErrorException(new PayException("-1", "创建Adapay收银台支付失败: " + e.getMessage()));
-        }
+        }, "创建Adapay收银台支付失败");
+        enrichPaymentStatus(result, null);
+        return result;
     }
 
     /**
@@ -251,17 +264,23 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
      */
     @Override
     public Map<String, Object> query(String tradeNo, String outTradeNo) {
-        try {
-            Map<String, Object> result;
-            if (payConfigStorage.getMerchantKey() != null) {
-                result = Payment.query(tradeNo, payConfigStorage.getMerchantKey());
-            } else {
-                result = Payment.query(tradeNo);
-            }
+        if (StringUtils.isNotEmpty(tradeNo)) {
+            final String paymentId = tradeNo;
+            Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+                @Override
+                public Map<String, Object> invoke() throws Exception {
+                    return Payment.query(paymentId, payConfigStorage.getMerchantKey());
+                }
+            }, "查询Adapay订单失败");
+            enrichPaymentStatus(result, null);
             return result;
-        } catch (BaseAdaPayException e) {
-            throw new PayErrorException(new PayException("-1", "查询Adapay订单失败: " + e.getMessage()));
         }
+
+        if (StringUtils.isNotEmpty(outTradeNo)) {
+            return queryByOrderNo(outTradeNo);
+        }
+
+        throw new PayErrorException(new PayException("-1", "查询Adapay订单失败: payment_id和order_no不能同时为空"));
     }
 
     /**
@@ -284,20 +303,21 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
      */
     @Override
     public Map<String, Object> close(String tradeNo, String outTradeNo) {
-        try {
-            Map<String, Object> params = new HashMap<>(2);
-            params.put("payment_id", tradeNo);
-            
-            Map<String, Object> result;
-            if (payConfigStorage.getMerchantKey() != null) {
-                result = Payment.close(params, payConfigStorage.getMerchantKey());
-            } else {
-                result = Payment.close(params);
-            }
-            return result;
-        } catch (BaseAdaPayException e) {
-            throw new PayErrorException(new PayException("-1", "关闭Adapay订单失败: " + e.getMessage()));
+        final String paymentId = resolvePaymentId(tradeNo, outTradeNo);
+        final Map<String, Object> params = new HashMap<>(4);
+        params.put("payment_id", paymentId);
+        if (StringUtils.isNotEmpty(payConfigStorage.getNotifyUrl())) {
+            params.put("notify_url", payConfigStorage.getNotifyUrl());
         }
+
+        Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return Payment.close(params, payConfigStorage.getMerchantKey());
+            }
+        }, "关闭Adapay订单失败");
+        enrichStatus(result, AdapayStatus.CLOSED);
+        return result;
     }
 
     /**
@@ -308,38 +328,42 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
      */
     @Override
     public AdapayRefundResult refund(RefundOrder refundOrder) {
-        try {
-            Map<String, Object> params = new HashMap<>(8);
-            params.put("app_id", payConfigStorage.getAppId());
-            params.put("payment_id", refundOrder.getTradeNo());
-            params.put("refund_order_no", refundOrder.getRefundNo());
-            params.put("refund_amt", refundOrder.getRefundAmount().toString());
-            
-            if (refundOrder.getDescription() != null) {
-                params.put("goods_desc", refundOrder.getDescription());
-            }
-            
-            Map<String, Object> result;
-            if (payConfigStorage.getMerchantKey() != null) {
-                result = Refund.create(refundOrder.getTradeNo(), params, payConfigStorage.getMerchantKey());
-            } else {
-                result = Refund.create(refundOrder.getTradeNo(), params);
-            }
-            
-            AdapayRefundResult refundResult = new AdapayRefundResult();
-            refundResult.setId((String) result.get("id"));
-            refundResult.setStatus((String) result.get("status"));
-            refundResult.setRefundOrderNo((String) result.get("refund_order_no"));
-            refundResult.setPaymentId((String) result.get("payment_id"));
-            refundResult.setRefundAmtString((String) result.get("refund_amt"));
-            refundResult.setErrorCode((String) result.get("error_code"));
-            refundResult.setErrorMsg((String) result.get("error_msg"));
-            refundResult.setAttrs(result);
-            
-            return refundResult;
-        } catch (BaseAdaPayException e) {
-            throw new PayErrorException(new PayException("-1", "Adapay退款失败: " + e.getMessage()));
+        final String paymentId = resolvePaymentId(refundOrder.getTradeNo(), refundOrder.getOutTradeNo());
+        final Map<String, Object> params = new HashMap<>(8);
+        params.put("app_id", payConfigStorage.getAppId());
+        params.put("payment_id", paymentId);
+        params.put("refund_order_no", refundOrder.getRefundNo());
+        params.put("refund_amt", refundOrder.getRefundAmount().toString());
+
+        if (refundOrder.getDescription() != null) {
+            params.put("reason", refundOrder.getDescription());
         }
+
+        if (StringUtils.isNotEmpty(refundOrder.getNotifyUrl())) {
+            params.put("notify_url", refundOrder.getNotifyUrl());
+        } else if (StringUtils.isNotEmpty(payConfigStorage.getNotifyUrl())) {
+            params.put("notify_url", payConfigStorage.getNotifyUrl());
+        }
+
+        Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return Refund.create(paymentId, params, payConfigStorage.getMerchantKey());
+            }
+        }, "Adapay退款失败");
+        enrichRefundStatus(result);
+
+        AdapayRefundResult refundResult = new AdapayRefundResult();
+        refundResult.setId(getString(result, "id"));
+        refundResult.setStatus(getString(result, "status"));
+        refundResult.setRefundOrderNo(getString(result, "refund_order_no"));
+        refundResult.setPaymentId(getString(result, "payment_id"));
+        refundResult.setRefundAmtString(getString(result, "refund_amt"));
+        refundResult.setErrorCode(getString(result, "error_code"));
+        refundResult.setErrorMsg(getString(result, "error_msg"));
+        refundResult.setAttrs(result);
+
+        return refundResult;
     }
 
     /**
@@ -361,19 +385,29 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
      */
     @Override
     public Map<String, Object> refundquery(RefundOrder refundOrder) {
-        try {
-            String refundId = refundOrder.getRefundNo();
-            Map<String, Object> params = new HashMap<>();
-            params.put("id", refundId);
-            
-            if (payConfigStorage.getMerchantKey() != null) {
-                return Refund.query(params, payConfigStorage.getMerchantKey());
-            } else {
-                return Refund.query(params);
-            }
-        } catch (BaseAdaPayException e) {
-            throw new PayErrorException(new PayException("-1", "查询Adapay退款失败: " + e.getMessage()));
+        final Map<String, Object> params = new HashMap<String, Object>(4);
+        if (StringUtils.isNotEmpty(refundOrder.getRefundNo())) {
+            params.put("refund_order_no", refundOrder.getRefundNo());
         }
+        if (StringUtils.isNotEmpty(refundOrder.getTradeNo())) {
+            params.put("payment_id", refundOrder.getTradeNo());
+        }
+        Object refundId = refundOrder.getAttr("refund_id");
+        if (refundId != null) {
+            params.put("refund_id", refundId);
+        }
+        if (params.isEmpty()) {
+            throw new PayErrorException(new PayException("-1", "查询Adapay退款失败: refund_id、payment_id、refund_order_no不能同时为空"));
+        }
+
+        Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return Refund.query(params, payConfigStorage.getMerchantKey());
+            }
+        }, "查询Adapay退款失败");
+        enrichRefundStatus(result);
+        return result;
     }
 
     /**
@@ -385,26 +419,24 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
      */
     @Override
     public Map<String, Object> downloadBill(Date billDate, BillType billType) {
-        try {
-            Map<String, Object> params = new HashMap<>(4);
-            String datePattern = DateUtils.YYYYMMDD;
-            if (billType != null && StringUtils.isNotEmpty(billType.getDatePattern())) {
-                datePattern = billType.getDatePattern();
-            }
-            params.put("bill_date", DateUtils.formatDate(billDate, datePattern));
+        final Map<String, Object> params = new HashMap<>(4);
+        String datePattern = DateUtils.YYYYMMDD;
+        if (billType != null && StringUtils.isNotEmpty(billType.getDatePattern())) {
+            datePattern = billType.getDatePattern();
+        }
+        params.put("bill_date", DateUtils.formatDate(billDate, datePattern));
 
-            // Adapay将特殊账单能力通过自定义功能号区分，例如余额支付账单。
-            if (billType != null && StringUtils.isNotEmpty(billType.getCustom())) {
-                params.put("adapay_func_code", billType.getCustom());
-            }
+        // Adapay将特殊账单能力通过自定义功能号区分，例如余额支付账单。
+        if (billType != null && StringUtils.isNotEmpty(billType.getCustom())) {
+            params.put("adapay_func_code", billType.getCustom());
+        }
 
-            if (payConfigStorage.getMerchantKey() != null) {
+        return executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
                 return Bill.download(params, payConfigStorage.getMerchantKey());
             }
-            return Bill.download(params);
-        } catch (BaseAdaPayException e) {
-            throw new PayErrorException(new PayException("-1", "下载Adapay账单失败: " + e.getMessage()));
-        }
+        }, "下载Adapay账单失败");
     }
 
     /**
@@ -456,6 +488,11 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
                "union_qr".equals(payChannel);
     }
 
+    @Override
+    public PayMessage createMessage(Map<String, Object> params) {
+        return new AdapayPayMessage(params);
+    }
+
     /**
      * 构建请求
      * Adapay使用SDK调用，不需要构建HTTP请求
@@ -473,7 +510,147 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
 
     @Override
     public <O extends PayOrder> Map<String, Object> microPay(O order) {
-        // TODO Auto-generated method stub
+        throw new PayErrorException(new PayException("-1", "Adapay暂不支持付款码/刷卡支付"));
+    }
+
+    private Map<String, Object> queryByOrderNo(final String orderNo) {
+        final Map<String, Object> params = new HashMap<String, Object>(4);
+        params.put("app_id", payConfigStorage.getAppId());
+        params.put("order_no", orderNo);
+        params.put("page_index", "1");
+        params.put("page_size", "1");
+
+        Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return Payment.queryList(params, payConfigStorage.getMerchantKey());
+            }
+        }, "按order_no查询Adapay订单失败");
+        enrichPaymentStatus(result, null);
+        return result;
+    }
+
+    private String resolvePaymentId(String tradeNo, String outTradeNo) {
+        if (StringUtils.isNotEmpty(tradeNo)) {
+            return tradeNo;
+        }
+        if (StringUtils.isEmpty(outTradeNo)) {
+            throw new PayErrorException(new PayException("-1", "payment_id为空时必须提供order_no"));
+        }
+        Map<String, Object> queryResult = queryByOrderNo(outTradeNo);
+        String paymentId = extractPaymentId(queryResult);
+        if (StringUtils.isEmpty(paymentId)) {
+            throw new PayErrorException(new PayException("-1", "未能通过order_no查询到Adapay payment_id: " + outTradeNo));
+        }
+        return paymentId;
+    }
+
+    private String extractPaymentId(Map<String, Object> result) {
+        if (result == null) {
+            return null;
+        }
+        String paymentId = getString(result, "payment_id");
+        if (StringUtils.isNotEmpty(paymentId)) {
+            return paymentId;
+        }
+        paymentId = getString(result, "id");
+        if (StringUtils.isNotEmpty(paymentId) && "payment".equals(getString(result, "object"))) {
+            return paymentId;
+        }
+        Object payments = result.get("payments");
+        if (payments instanceof List && !((List) payments).isEmpty()) {
+            Object first = ((List) payments).get(0);
+            if (first instanceof Map) {
+                return getString((Map<String, Object>) first, "id");
+            }
+        }
         return null;
+    }
+
+    private void enrichPaymentStatus(Map<String, Object> result, AdapayStatus defaultStatus) {
+        if (result == null) {
+            return;
+        }
+        Object payments = result.get("payments");
+        if (payments instanceof List) {
+            AdapayStatus firstStatus = null;
+            for (Object payment : (List) payments) {
+                if (payment instanceof Map) {
+                    Map<String, Object> paymentMap = (Map<String, Object>) payment;
+                    AdapayStatus paymentStatus = AdapayStatus.payment(getString(paymentMap, "status"));
+                    enrichStatus(paymentMap, paymentStatus);
+                    if (firstStatus == null) {
+                        firstStatus = paymentStatus;
+                    }
+                }
+            }
+            enrichStatus(result, firstStatus == null ? AdapayStatus.UNKNOWN : firstStatus);
+            return;
+        }
+        AdapayStatus status = defaultStatus == null ? AdapayStatus.payment(getString(result, "status")) : defaultStatus;
+        enrichStatus(result, status);
+    }
+
+    private void enrichRefundStatus(Map<String, Object> result) {
+        if (result == null) {
+            return;
+        }
+        Object refunds = result.get("refunds");
+        if (refunds instanceof List) {
+            AdapayStatus firstStatus = null;
+            for (Object refund : (List) refunds) {
+                if (refund instanceof Map) {
+                    Map<String, Object> refundMap = (Map<String, Object>) refund;
+                    AdapayStatus refundStatus = AdapayStatus.refund(firstNotEmpty(getString(refundMap, "trans_status"), getString(refundMap, "status")));
+                    enrichStatus(refundMap, refundStatus);
+                    if (firstStatus == null) {
+                        firstStatus = refundStatus;
+                    }
+                }
+            }
+            enrichStatus(result, firstStatus == null ? AdapayStatus.UNKNOWN : firstStatus);
+            return;
+        }
+        AdapayStatus status = AdapayStatus.refund(firstNotEmpty(getString(result, "status"), getString(result, "trans_status")));
+        enrichStatus(result, status);
+    }
+
+    private void enrichStatus(Map<String, Object> result, AdapayStatus status) {
+        if (result == null || status == null) {
+            return;
+        }
+        result.put("sdk_status", status.getCode());
+        result.put("sdk_status_desc", status.getDescription());
+    }
+
+    private <T> T executeWithConfig(AdapayInvoker<T> invoker, String errorMessage) {
+        synchronized (AdapayPayConfigStorage.class) {
+            try {
+                payConfigStorage.initAdapayConfig();
+                return invoker.invoke();
+            } catch (PayErrorException e) {
+                throw e;
+            } catch (BaseAdaPayException e) {
+                throw new PayErrorException(new PayException("-1", errorMessage + ": " + e.getMessage()));
+            } catch (Exception e) {
+                throw new PayErrorException(new PayException("-1", errorMessage + ": " + e.getMessage()));
+            }
+        }
+    }
+
+    private static String getString(Map<String, Object> map, String key) {
+        if (map == null) {
+            return null;
+        }
+        Object value = map.get(key);
+        return value == null ? null : value.toString();
+    }
+
+    private static String firstNotEmpty(String first, String second) {
+        return StringUtils.isNotEmpty(first) ? first : second;
+    }
+
+    private interface AdapayInvoker<T> {
+        T invoke() throws Exception;
     }
 }
