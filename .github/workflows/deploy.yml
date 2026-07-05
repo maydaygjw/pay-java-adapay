@@ -27,45 +27,60 @@ jobs:
           cache: 'maven'
 
       - name: Generate Maven settings.xml
-        uses: whelk-io/maven-settings-xml-action@v22
-        with:
-          servers: |
-            [
-              {
-                "id": "1666-snapshot-nimFi5",
-                "username": "${{ secrets.ALIYUN_MAVEN_USERNAME }}",
-                "password": "${{ secrets.ALIYUN_MAVEN_PASSWORD }}"
-              }
-            ]
-          profiles: |
-            [
-              {
-                "id": "rdc",
-                "properties": {
-                  "altSnapshotDeploymentRepository": "1666-snapshot-nimFi5::default::https://holuntech-cn-shanghai.devops.aliyuncs.com/packages/api/protocol/maven/1666-snapshot-nimfi5"
-                },
-                "repositories": [
-                  {
-                    "id": "1666-snapshot-nimFi5",
-                    "url": "https://holuntech-cn-shanghai.devops.aliyuncs.com/packages/api/protocol/maven/1666-snapshot-nimfi5",
-                    "releases": { "enabled": "false" },
-                    "snapshots": { "enabled": "true" }
-                  }
-                ],
-                "pluginRepositories": [
-                  {
-                    "id": "1666-snapshot-nimFi5",
-                    "url": "https://holuntech-cn-shanghai.devops.aliyuncs.com/packages/api/protocol/maven/1666-snapshot-nimfi5",
-                    "releases": { "enabled": "false" },
-                    "snapshots": { "enabled": "true" }
-                  }
-                ]
-              }
-            ]
-          active_profiles: |
-            [
-              "rdc"
-            ]
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
+              <servers>
+                  <server>
+                      <id>1666-snapshot-nimFi5</id>
+                      <username>${ALIYUN_MAVEN_USERNAME}</username>
+                      <password>${ALIYUN_MAVEN_PASSWORD}</password>
+                  </server>
+              </servers>
+              <profiles>
+                  <profile>
+                      <id>rdc</id>
+                      <properties>
+                          <altSnapshotDeploymentRepository>1666-snapshot-nimFi5::default::https://holuntech-cn-shanghai.devops.aliyuncs.com/packages/api/protocol/maven/1666-snapshot-nimfi5</altSnapshotDeploymentRepository>
+                      </properties>
+                      <repositories>
+                          <repository>
+                              <id>1666-snapshot-nimFi5</id>
+                              <url>https://holuntech-cn-shanghai.devops.aliyuncs.com/packages/api/protocol/maven/1666-snapshot-nimfi5</url>
+                              <releases>
+                                  <enabled>false</enabled>
+                              </releases>
+                              <snapshots>
+                                  <enabled>true</enabled>
+                              </snapshots>
+                          </repository>
+                      </repositories>
+                      <pluginRepositories>
+                          <pluginRepository>
+                              <id>1666-snapshot-nimFi5</id>
+                              <url>https://holuntech-cn-shanghai.devops.aliyuncs.com/packages/api/protocol/maven/1666-snapshot-nimfi5</url>
+                              <releases>
+                                  <enabled>false</enabled>
+                              </releases>
+                              <snapshots>
+                                  <enabled>true</enabled>
+                              </snapshots>
+                          </pluginRepository>
+                      </pluginRepositories>
+                  </profile>
+              </profiles>
+              <activeProfiles>
+                  <activeProfile>rdc</activeProfile>
+              </activeProfiles>
+          </settings>
+          EOF
+        env:
+          ALIYUN_MAVEN_USERNAME: ${{ secrets.ALIYUN_MAVEN_USERNAME }}
+          ALIYUN_MAVEN_PASSWORD: ${{ secrets.ALIYUN_MAVEN_PASSWORD }}
 
       - name: Determine SNAPSHOT version
         id: version
