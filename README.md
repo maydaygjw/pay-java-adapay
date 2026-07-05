@@ -22,7 +22,7 @@
 <dependency>
     <groupId>com.egzosn</groupId>
     <artifactId>{module-name}</artifactId>
-    <version>2.14.9</version>
+    <version>2.14.13</version>
 </dependency>
 
 ```
@@ -81,4 +81,4 @@ E-Mail：egan@egzosn.com
 
 微信群: 加我前拜托伸个小手关注公众号
 
-![微信群](https://github.com/egzosn/pay-java-parent/blob/develop/pay-java-demo/src/main/webapp/wx.jpg?raw=true "wx.jpg")
+![微信群](https://gitee.com/egzosn/pay-java-parent/raw/develop/pay-java-demo/src/main/webapp/wx.jpg?raw=true "wx.jpg")
