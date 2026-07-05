@@ -5,19 +5,21 @@
 
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.holuntech</groupId>
-    <artifactId>pay-java-parent</artifactId>
-    <packaging>pom</packaging>
+    <artifactId>pay-java-adapay</artifactId>
+    <packaging>jar</packaging>
     <version>2.14.14-SNAPSHOT</version>
 
-    <name>Pay Java - Parent</name>
-    <description>Pay Java Parent</description>
-    <url>https://github.com/egzosn/pay-java-parent</url>
+    <name>pay-java-adapay</name>
+    <description>Adapay (斗拱支付) integration module for pay-java</description>
+    <url>https://github.com/maydaygjw/pay-java-adapay</url>
+
     <licenses>
         <license>
             <name>The Apache License, Version 2.0</name>
             <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
         </license>
     </licenses>
+
     <developers>
         <developer>
             <name>Egan</name>
@@ -40,221 +42,80 @@
             <url>https://github.com/hocgin</url>
         </developer>
     </developers>
+
     <scm>
-        <connection>scm:git:https://github.com/egzosn/pay-java-parent.git</connection>
-        <developerConnection>scm:git:git@github.com:egzosn/pay-java-parent.git</developerConnection>
-        <url>https://github.com/egzosn/pay-java-parent</url>
+        <connection>scm:git:https://github.com/maydaygjw/pay-java-adapay.git</connection>
+        <developerConnection>scm:git:git@github.com:maydaygjw/pay-java-adapay.git</developerConnection>
+        <url>https://github.com/maydaygjw/pay-java-adapay</url>
     </scm>
 
-
-    <modules>
-        <module>pay-java-common</module>
-        <module>pay-java-web-support</module>
-        <module>pay-java-ali</module>
-        <module>pay-java-wx</module>
-        <module>pay-java-wx-youdian</module>
-        <module>pay-java-fuiou</module>
-        <module>pay-java-union</module>
-        <module>pay-java-payoneer</module>
-        <module>pay-java-paypal</module>
-        <module>pay-java-yiji</module>
-        <module>pay-java-baidu</module>
-        <module>pay-java-adapay</module>
-        <module>pay-java-demo</module>
-    </modules>
-
-
     <properties>
-        <revision>2.14.13</revision>
-        <httpmime.version>4.5.4</httpmime.version>
-        <log4j.version>1.2.17</log4j.version>
-        <fastjson.version>1.2.83</fastjson.version>
-        <zxing.version>3.3.1</zxing.version>
-        <servlet-api.version>4.0.1</servlet-api.version>
-        <bcprov-jdk15on.version>1.59</bcprov-jdk15on.version>
         <java.version>8</java.version>
         <maven.compiler.source>8</maven.compiler.source>
         <maven.compiler.target>8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <flatten-maven-plugin.version>1.1.0</flatten-maven-plugin.version>
+
+        <!-- 引用上游 com.egzosn 公共模块 -->
+        <pay-java-common.version>2.14.13</pay-java-common.version>
+
+        <adapay-sdk.version>1.2.10</adapay-sdk.version>
+        <fastjson.version>1.2.83</fastjson.version>
+        <junit.version>4.13.2</junit.version>
+        <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
     </properties>
 
+    <dependencies>
+        <!-- 引用上游公共模块，不再依赖本地 pay-java-common -->
+        <dependency>
+            <groupId>com.egzosn</groupId>
+            <artifactId>pay-java-common</artifactId>
+            <version>${pay-java-common.version}</version>
+        </dependency>
 
-    <dependencyManagement>
-        <dependencies>
+        <!-- Adapay 官方 SDK -->
+        <dependency>
+            <groupId>com.huifu.adapay.core</groupId>
+            <artifactId>adapay-core-sdk</artifactId>
+            <version>${adapay-sdk.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.huifu.adapay</groupId>
+            <artifactId>adapay-java-sdk</artifactId>
+            <version>${adapay-sdk.version}</version>
+        </dependency>
 
-            <dependency>
-                <groupId>com.holuntech</groupId>
-                <artifactId>pay-java-common</artifactId>
-                <version>2.14.14-SNAPSHOT</version>
-            </dependency>
-            <dependency>
-                <groupId>com.holuntech</groupId>
-                <artifactId>pay-java-web-support</artifactId>
-                <version>2.14.14-SNAPSHOT</version>
-            </dependency>
+        <!-- Adapay SDK 需要 fastjson -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>fastjson</artifactId>
+            <version>${fastjson.version}</version>
+        </dependency>
 
-            <!--httpcomponents-->
-            <dependency>
-                <groupId>org.apache.httpcomponents</groupId>
-                <artifactId>httpmime</artifactId>
-                <version>${httpmime.version}</version>
-            </dependency>
-            <!--/httpcomponents-->
-            <dependency>
-                <groupId>com.alibaba</groupId>
-                <artifactId>fastjson</artifactId>
-                <version>${fastjson.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.bouncycastle</groupId>
-                <artifactId>bcprov-jdk15on</artifactId>
-                <version>${bcprov-jdk15on.version}</version>
-            </dependency>
+        <!-- 测试 -->
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 
-            <!-- log4j  -->
-            <dependency>
-                <groupId>org.slf4j</groupId>
-                <artifactId>slf4j-api</artifactId>
-                <version>1.7.30</version>
-            </dependency>
-            <!-- / log4j -->
-
-
-            <dependency>
-                <groupId>com.google.zxing</groupId>
-                <artifactId>core</artifactId>
-                <version>${zxing.version}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>javax.servlet</groupId>
-                <artifactId>javax.servlet-api</artifactId>
-                <scope>provided</scope>
-                <version>${servlet-api.version}</version>
-            </dependency>
-
-        </dependencies>
-
-    </dependencyManagement>
-    <distributionManagement>
-        <snapshotRepository>
-            <id>ossrh</id>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-        </snapshotRepository>
-        <repository>
-            <id>ossrh</id>
-            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-        </repository>
-    </distributionManagement>
     <build>
         <plugins>
-
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven-compiler-plugin.version}</version>
                 <configuration>
-                    <!--                        <fork>true</fork>-->
-                    <compilerArgs>
-                        <arg>-parameters</arg>
-                    </compilerArgs>
                     <source>${maven.compiler.source}</source>
                     <target>${maven.compiler.target}</target>
                     <encoding>${project.build.sourceEncoding}</encoding>
+                    <compilerArgs>
+                        <arg>-parameters</arg>
+                    </compilerArgs>
                 </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>flatten-maven-plugin</artifactId>
-                <version>${flatten-maven-plugin.version}</version>
-                <configuration>
-                    <updatePomFile>true</updatePomFile>
-                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
-                </configuration>
-                <executions>
-                    <execution>
-                        <id>flatten</id>
-                        <phase>process-resources</phase>
-                        <goals>
-                            <goal>flatten</goal>
-                        </goals>
-                    </execution>
-                    <execution>
-                        <id>flatten.clean</id>
-                        <phase>clean</phase>
-                        <goals>
-                            <goal>clean</goal>
-                        </goals>
-                    </execution>
-                </executions>
             </plugin>
         </plugins>
-
     </build>
-    <profiles>
-        <profile>
-            <id>local</id>
-            <activation>
-                <activeByDefault>true</activeByDefault>
-            </activation>
-        </profile>
-        <profile>
-            <id>proc</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-source-plugin</artifactId>
-                        <version>3.3.0</version>
-                        <executions>
-                            <execution>
-                                <id>attach-sources</id>
-                                <goals>
-                                    <goal>jar-no-fork</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
 
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-javadoc-plugin</artifactId>
-                        <version>3.6.0</version>
-                        <executions>
-                            <execution>
-                                <id>attach-javadocs</id>
-                                <goals>
-                                    <goal>jar</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-gpg-plugin</artifactId>
-                        <version>1.6</version>
-                        <executions>
-                            <execution>
-                                <id>sign-artifacts</id>
-                                <phase>verify</phase>
-                                <goals>
-                                    <goal>sign</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <plugin>
-                        <groupId>org.sonatype.central</groupId>
-                        <artifactId>central-publishing-maven-plugin</artifactId>
-                        <version>0.5.0</version>
-                        <extensions>true</extensions>
-                        <configuration>
-                            <publishingServerId>central</publishingServerId>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
 </project>
