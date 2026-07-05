@@ -28,9 +28,14 @@
 </dependency>
 ```
 
+> 本模块基于上游 `com.egzosn:pay-java-common` 实现，因此 `PayOrder`、`RefundOrder` 等公共类来自 `com.egzosn.pay.common.*`，而 Adapay 相关类来自 `com.holuntech.pay.adapay.*`。
+
 ### 2. 配置初始化
 
 ```java
+import com.holuntech.pay.adapay.api.AdapayPayConfigStorage;
+import com.holuntech.pay.adapay.api.AdapayPayService;
+
 // 创建配置
 AdapayPayConfigStorage config = new AdapayPayConfigStorage();
 
@@ -59,6 +64,10 @@ AdapayPayService payService = new AdapayPayService(config);
 ### 3. 发起支付
 
 ```java
+import com.egzosn.pay.common.bean.PayOrder;
+import com.holuntech.pay.adapay.api.AdapayPayService;
+import com.holuntech.pay.adapay.bean.AdapayTransactionType;
+
 // 创建订单
 PayOrder order = new PayOrder();
 order.setSubject("商品标题");
@@ -75,6 +84,9 @@ String qrCode = (String) result.get("qr_code"); // 二维码地址
 ### 4. 收银台支付
 
 ```java
+import com.egzosn.pay.common.bean.PayOrder;
+import com.holuntech.pay.adapay.api.AdapayPayService;
+
 PayOrder order = new PayOrder();
 order.setSubject("商品标题");
 order.setBody("商品描述");
@@ -96,6 +108,10 @@ String status = (String) result.get("status");
 ### 6. 退款
 
 ```java
+import com.egzosn.pay.common.bean.RefundOrder;
+import com.egzosn.pay.common.bean.RefundResult;
+import com.holuntech.pay.adapay.api.AdapayPayService;
+
 RefundOrder refundOrder = new RefundOrder();
 refundOrder.setTradeNo(paymentId);
 refundOrder.setRefundNo("REFUND_" + System.currentTimeMillis());
