@@ -60,6 +60,7 @@
 
         <adapay-sdk.version>1.2.10</adapay-sdk.version>
         <fastjson.version>1.2.83</fastjson.version>
+        <pay-spring-boot.version>1.0.5</pay-spring-boot.version>
         <junit.version>4.13.2</junit.version>
         <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
     </properties>
@@ -89,6 +90,14 @@
             <groupId>com.alibaba</groupId>
             <artifactId>fastjson</artifactId>
             <version>${fastjson.version}</version>
+        </dependency>
+
+        <!-- Spring Boot starter platform adapter, optional for non-Spring users -->
+        <dependency>
+            <groupId>com.egzosn</groupId>
+            <artifactId>pay-spring-boot</artifactId>
+            <version>${pay-spring-boot.version}</version>
+            <optional>true</optional>
         </dependency>
 
         <!-- 测试 -->

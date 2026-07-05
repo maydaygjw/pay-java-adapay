@@ -1,0 +1,2 @@
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+com.holuntech.pay.adapay.spring.boot.core.provider.merchant.platform.AdapayPaymentPlatform
