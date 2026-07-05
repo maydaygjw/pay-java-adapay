@@ -61,6 +61,7 @@
         <adapay-sdk.version>1.2.10</adapay-sdk.version>
         <fastjson.version>1.2.83</fastjson.version>
         <pay-spring-boot.version>1.0.3</pay-spring-boot.version>
+        <spring-boot-autoconfigure.version>2.7.18</spring-boot-autoconfigure.version>
         <junit.version>4.13.2</junit.version>
         <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
     </properties>
@@ -97,6 +98,12 @@
             <groupId>com.egzosn</groupId>
             <artifactId>pay-spring-boot</artifactId>
             <version>${pay-spring-boot.version}</version>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+            <version>${spring-boot-autoconfigure.version}</version>
             <optional>true</optional>
         </dependency>
 

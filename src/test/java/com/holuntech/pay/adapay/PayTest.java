@@ -5,6 +5,7 @@ import com.holuntech.pay.adapay.api.AdapayPayService;
 import com.holuntech.pay.adapay.bean.AdapayTransactionType;
 import com.egzosn.pay.common.bean.PayOrder;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.math.BigDecimal;
@@ -15,6 +16,7 @@ import java.util.Map;
  *
  * @author egan
  */
+@Ignore("Integration sample requiring real Adapay credentials")
 public class PayTest {
 
     private AdapayPayService payService;

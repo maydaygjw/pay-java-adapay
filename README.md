@@ -121,6 +121,69 @@ refundOrder.setDescription("退款原因");
 RefundResult refundResult = payService.refund(refundOrder);
 ```
 
+## yshop / Spring Boot 接入
+
+模块同时提供 Spring Boot 自动配置：
+
+- Spring Boot 2：`META-INF/spring.factories`
+- Spring Boot 3：`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
+
+yshop 的 `merchant_details.pay_type` 建议配置为：
+
+```text
+adapay
+```
+
+自动配置类会注册 `AdapayPaymentPlatform`，平台名为 `adapay`，可被 `pay-spring-boot-starter` 收集并通过 `PaymentPlatforms.getPaymentPlatform("adapay")` 找到。
+
+### merchant_details 字段映射
+
+| yshop / 通用字段 | Adapay 配置 |
+|------------------|-------------|
+| appid / app_id | appId |
+| pid / api_key | apiKey |
+| api_mock_key / api_key_test | apiMockKey |
+| key_private / private_key | rsaPrivateKey |
+| key_public / rsa_public_key | rsaPublicKey |
+| seller / merchant_key / merchantKey | merchantKey |
+| is_test | prodMode = !is_test |
+| notify_url | notifyUrl |
+| return_url | returnUrl |
+
+多商户场景建议每个租户配置独立 `merchantKey`。未显式配置时 SDK 会基于 `appId/apiKey/apiMockKey` 生成隔离 key，但显式保存更利于排查。
+
+### 回调验签要求
+
+Adapay 异步通知验签必须使用回调表单里的原始 `data` 字符串和 `sign`：
+
+```java
+boolean ok = payService.verifyRawData(rawData, sign);
+```
+
+不要把 `data` 解析成 `Map` 后再验签，`Map.toString()` 与 Adapay 原始签名串不同，会导致验签失败。通过 `payBack(...)` 走默认表单解析时，`data` 会保持字符串；如果业务 Web 层提前解析了请求，请额外保留原始 `data`。
+
+### transactionType 推荐值
+
+Spring 平台适配同时支持枚举名和 Adapay code：
+
+```text
+WX_LITE
+wx_lite
+ALIPAY_WAP
+alipay_wap
+```
+
+yshop 字符串配置推荐直接使用 Adapay code，例如 `wx_lite`、`alipay_wap`、`alipay_qr`、`wx_pub_qr`、`checkout`。
+
+### 查询与退款订单号
+
+查询支持：
+
+- `payment_id`：`query(paymentId, null)`
+- `order_no`：`query(null, orderNo)`
+
+退款接口仍以 Adapay `payment_id` 为准。如果 `RefundOrder.tradeNo` 为空但提供了 `outTradeNo/order_no`，SDK 会先按 `order_no` 查询 `payment_id` 再退款。生产链路仍建议保存 Adapay 返回的 `payment_id`，可减少一次查询并避免同一商户订单号异常重复时产生歧义。
+
 ## 支付渠道列表
 
 | 枚举值 | 说明 |

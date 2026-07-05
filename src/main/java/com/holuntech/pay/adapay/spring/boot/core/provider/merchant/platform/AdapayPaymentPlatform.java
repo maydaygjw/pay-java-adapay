@@ -10,17 +10,15 @@ import com.egzosn.pay.spring.boot.core.merchant.bean.CommonPaymentPlatformMercha
 import com.holuntech.pay.adapay.api.AdapayPayConfigStorage;
 import com.holuntech.pay.adapay.api.AdapayPayService;
 import com.holuntech.pay.adapay.bean.AdapayTransactionType;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.context.annotation.Configuration;
 
 /**
  * Adapay支付平台。
  *
  * @author egan
  */
-@Configuration(AdapayPaymentPlatform.PLATFORM_NAME)
-@ConditionalOnMissingBean(AdapayPaymentPlatform.class)
+@AutoConfiguration(AdapayPaymentPlatform.PLATFORM_NAME)
 @ConditionalOnClass(name = "com.holuntech.pay.adapay.api.AdapayPayConfigStorage")
 public class AdapayPaymentPlatform implements PaymentPlatform {
 
@@ -81,7 +79,7 @@ public class AdapayPaymentPlatform implements PaymentPlatform {
         if (StringUtils.isEmpty(name)) {
             return null;
         }
-        return AdapayTransactionType.valueOf(name);
+        return AdapayTransactionType.of(name);
     }
 
     private static String attr(PayConfigStorage payConfigStorage, String name) {

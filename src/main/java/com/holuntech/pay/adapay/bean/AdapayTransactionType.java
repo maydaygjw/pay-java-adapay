@@ -143,4 +143,16 @@ public enum AdapayTransactionType implements TransactionType {
     public String getDescription() {
         return description;
     }
+
+    public static AdapayTransactionType of(String name) {
+        if (name == null || name.length() == 0) {
+            return null;
+        }
+        for (AdapayTransactionType transactionType : values()) {
+            if (transactionType.name().equalsIgnoreCase(name) || transactionType.code.equalsIgnoreCase(name)) {
+                return transactionType;
+            }
+        }
+        throw new IllegalArgumentException("No enum constant or code " + AdapayTransactionType.class.getName() + "." + name);
+    }
 }

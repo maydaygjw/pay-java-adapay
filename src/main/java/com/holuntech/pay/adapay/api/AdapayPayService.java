@@ -85,18 +85,32 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
         if (params == null) {
             return false;
         }
-        String data = getString(params, "data");
-        String signValue = StringUtils.isNotEmpty(sign) ? sign : getString(params, "sign");
-        String publicKey = payConfigStorage.getRsaPublicKey();
-        if (StringUtils.isEmpty(publicKey)) {
-            publicKey = payConfigStorage.getKeyPublic();
+        String data = getString(params, "raw_data");
+        if (StringUtils.isEmpty(data)) {
+            Object dataParam = params.get("data");
+            if (dataParam instanceof CharSequence) {
+                data = dataParam.toString();
+            }
         }
-        if (StringUtils.isEmpty(data) || StringUtils.isEmpty(signValue) || StringUtils.isEmpty(publicKey)) {
+        String signValue = StringUtils.isNotEmpty(sign) ? sign : getString(params, "sign");
+        return verifyRawData(data, signValue);
+    }
+
+    /**
+     * 使用Adapay原始data字符串验签。
+     *
+     * @param data Adapay回调表单中的原始data字符串，不能使用解析后的Map.toString()
+     * @param sign Adapay回调表单中的sign
+     * @return 验签结果
+     */
+    public boolean verifyRawData(String data, String sign) {
+        String publicKey = getPublicKey();
+        if (StringUtils.isEmpty(data) || StringUtils.isEmpty(sign) || StringUtils.isEmpty(publicKey)) {
             return false;
         }
         try {
             String charset = StringUtils.isEmpty(payConfigStorage.getInputCharset()) ? "UTF-8" : payConfigStorage.getInputCharset();
-            return AdapaySign.verifySign(data, signValue, publicKey, charset);
+            return AdapaySign.verifySign(data, sign, publicKey, charset);
         } catch (Exception e) {
             LOG.warn("Adapay callback sign verify failed", e);
             return false;
@@ -190,7 +204,7 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
         Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
             @Override
             public Map<String, Object> invoke() throws Exception {
-                return Payment.create(params, payConfigStorage.getMerchantKey());
+                return createPayment(params);
             }
         }, "创建Adapay支付订单失败");
         enrichPaymentStatus(result, null);
@@ -209,7 +223,7 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
         Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
             @Override
             public Map<String, Object> invoke() throws Exception {
-                return Checkout.create(params, payConfigStorage.getMerchantKey());
+                return createCheckout(params);
             }
         }, "创建Adapay收银台支付失败");
         enrichPaymentStatus(result, null);
@@ -269,7 +283,7 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
             Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
                 @Override
                 public Map<String, Object> invoke() throws Exception {
-                    return Payment.query(paymentId, payConfigStorage.getMerchantKey());
+                    return queryPayment(paymentId);
                 }
             }, "查询Adapay订单失败");
             enrichPaymentStatus(result, null);
@@ -313,7 +327,7 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
         Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
             @Override
             public Map<String, Object> invoke() throws Exception {
-                return Payment.close(params, payConfigStorage.getMerchantKey());
+                return closePayment(params);
             }
         }, "关闭Adapay订单失败");
         enrichStatus(result, AdapayStatus.CLOSED);
@@ -348,7 +362,7 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
         Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
             @Override
             public Map<String, Object> invoke() throws Exception {
-                return Refund.create(paymentId, params, payConfigStorage.getMerchantKey());
+                return createRefund(paymentId, params);
             }
         }, "Adapay退款失败");
         enrichRefundStatus(result);
@@ -403,7 +417,7 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
         Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
             @Override
             public Map<String, Object> invoke() throws Exception {
-                return Refund.query(params, payConfigStorage.getMerchantKey());
+                return queryRefund(params);
             }
         }, "查询Adapay退款失败");
         enrichRefundStatus(result);
@@ -434,7 +448,7 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
         return executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
             @Override
             public Map<String, Object> invoke() throws Exception {
-                return Bill.download(params, payConfigStorage.getMerchantKey());
+                return downloadAdapayBill(params);
             }
         }, "下载Adapay账单失败");
     }
@@ -523,7 +537,7 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
         Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
             @Override
             public Map<String, Object> invoke() throws Exception {
-                return Payment.queryList(params, payConfigStorage.getMerchantKey());
+                return queryPaymentList(params);
             }
         }, "按order_no查询Adapay订单失败");
         enrichPaymentStatus(result, null);
@@ -623,6 +637,38 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
         result.put("sdk_status_desc", status.getDescription());
     }
 
+    protected Map<String, Object> createPayment(Map<String, Object> params) throws BaseAdaPayException {
+        return Payment.create(params, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> createCheckout(Map<String, Object> params) throws BaseAdaPayException {
+        return Checkout.create(params, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> queryPayment(String paymentId) throws BaseAdaPayException {
+        return Payment.query(paymentId, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> queryPaymentList(Map<String, Object> params) throws BaseAdaPayException {
+        return Payment.queryList(params, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> closePayment(Map<String, Object> params) throws BaseAdaPayException {
+        return Payment.close(params, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> createRefund(String paymentId, Map<String, Object> params) throws BaseAdaPayException {
+        return Refund.create(paymentId, params, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> queryRefund(Map<String, Object> params) throws BaseAdaPayException {
+        return Refund.query(params, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> downloadAdapayBill(Map<String, Object> params) throws BaseAdaPayException {
+        return Bill.download(params, payConfigStorage.getMerchantKey());
+    }
+
     private <T> T executeWithConfig(AdapayInvoker<T> invoker, String errorMessage) {
         synchronized (AdapayPayConfigStorage.class) {
             try {
@@ -648,6 +694,14 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
 
     private static String firstNotEmpty(String first, String second) {
         return StringUtils.isNotEmpty(first) ? first : second;
+    }
+
+    private String getPublicKey() {
+        String publicKey = payConfigStorage.getRsaPublicKey();
+        if (StringUtils.isEmpty(publicKey)) {
+            publicKey = payConfigStorage.getKeyPublic();
+        }
+        return publicKey;
     }
 
     private interface AdapayInvoker<T> {
