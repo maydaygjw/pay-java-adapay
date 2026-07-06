@@ -13,12 +13,21 @@ import com.holuntech.pay.adapay.bean.AdapayTransactionType;
 import com.holuntech.pay.adapay.bean.AdapayRefundResult;
 import com.holuntech.pay.adapay.bean.AdapayStatus;
 import com.huifu.adapay.core.util.AdapaySign;
+import com.alibaba.fastjson.JSON;
 import com.huifu.adapay.model.Bill;
 import com.huifu.adapay.model.Payment;
 import com.huifu.adapay.model.Refund;
 import com.huifu.adapay.model.Checkout;
+import com.huifu.adapay.model.Member;
+import com.huifu.adapay.model.CorpMember;
+import com.huifu.adapay.model.SettleAccount;
 import com.huifu.adapay.core.exception.BaseAdaPayException;
+import com.holuntech.pay.adapay.bean.AdapayDivMember;
+import com.holuntech.pay.adapay.bean.AdapayProfitSharingResult;
+import com.holuntech.pay.adapay.bean.AdapayReverseResult;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Date;
 import java.util.HashMap;
@@ -502,6 +511,353 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
                "union_qr".equals(payChannel);
     }
 
+    // ==================== 分账相关接口 ====================
+
+    /**
+     * 创建实时分账支付订单。
+     * 在普通支付基础上传入 div_members，支付成功后会自动按分账信息实时分账。
+     *
+     * @param order 支付订单信息
+     * @param divMembers 分账对象列表，最多7个分账方，必须包含一个手续费承担方
+     * @return 支付结果信息
+     */
+    public Map<String, Object> orderInfoWithProfitSharing(PayOrder order, List<AdapayDivMember> divMembers) {
+        if (divMembers == null || divMembers.isEmpty()) {
+            throw new PayErrorException(new PayException("-1", "实时分账必须传入分账对象列表"));
+        }
+        final Map<String, Object> params = buildPaymentParams(order);
+        params.put("pay_channel", order.getTransactionType().getType());
+        params.put("div_members", buildDivMembers(divMembers));
+
+        Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return createPayment(params);
+            }
+        }, "创建Adapay实时分账支付订单失败");
+        enrichPaymentStatus(result, null);
+        return result;
+    }
+
+    /**
+     * 创建延时分账支付订单。
+     * 设置 pay_mode=delay，支付完成后需要再调用 {@link #profitSharingConfirm} 进行分账确认。
+     *
+     * @param order 支付订单信息
+     * @return 支付结果信息
+     */
+    public Map<String, Object> orderInfoWithDelayProfitSharing(PayOrder order) {
+        final Map<String, Object> params = buildPaymentParams(order);
+        params.put("pay_channel", order.getTransactionType().getType());
+        params.put("pay_mode", "delay");
+
+        Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return createPayment(params);
+            }
+        }, "创建Adapay延时分账支付订单失败");
+        enrichPaymentStatus(result, null);
+        return result;
+    }
+
+    /**
+     * 延时分账确认。
+     * 对已经支付完成的延时分账订单进行分账确认。
+     *
+     * @param paymentId Adapay 支付对象 id
+     * @param orderNo 商户确认订单号，app_id 下唯一
+     * @param confirmAmt 确认金额，必须大于 0
+     * @param divMembers 分账对象列表，金额总和必须等于确认金额
+     * @param description 附加说明
+     * @param feeMode 手续费收取模式：O-商户手续费账户扣取，I-交易金额中扣取
+     * @return 分账确认结果
+     */
+    public AdapayProfitSharingResult profitSharingConfirm(String paymentId, String orderNo, BigDecimal confirmAmt,
+                                                           List<AdapayDivMember> divMembers, String description, String feeMode) {
+        if (StringUtils.isEmpty(paymentId)) {
+            throw new PayErrorException(new PayException("-1", "payment_id 不能为空"));
+        }
+        if (StringUtils.isEmpty(orderNo)) {
+            throw new PayErrorException(new PayException("-1", "order_no 不能为空"));
+        }
+        if (confirmAmt == null || confirmAmt.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new PayErrorException(new PayException("-1", "confirm_amt 必须大于 0"));
+        }
+
+        final Map<String, Object> params = new HashMap<String, Object>(8);
+        params.put("app_id", payConfigStorage.getAppId());
+        params.put("payment_id", paymentId);
+        params.put("order_no", orderNo);
+        params.put("confirm_amt", confirmAmt.setScale(2, BigDecimal.ROUND_HALF_UP).toString());
+        if (StringUtils.isNotEmpty(description)) {
+            params.put("description", description);
+        }
+        if (StringUtils.isNotEmpty(feeMode)) {
+            params.put("fee_mode", feeMode);
+        }
+        if (divMembers != null && !divMembers.isEmpty()) {
+            params.put("div_members", buildDivMembers(divMembers));
+        }
+
+        Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return createPaymentConfirm(params);
+            }
+        }, "Adapay延时分账确认失败");
+        enrichProfitSharingStatus(result);
+        return new AdapayProfitSharingResult(result);
+    }
+
+    /**
+     * 延时分账确认（简化版）。
+     *
+     * @param paymentId Adapay 支付对象 id
+     * @param orderNo 商户确认订单号
+     * @param confirmAmt 确认金额
+     * @param divMembers 分账对象列表
+     * @return 分账确认结果
+     */
+    public AdapayProfitSharingResult profitSharingConfirm(String paymentId, String orderNo, BigDecimal confirmAmt, List<AdapayDivMember> divMembers) {
+        return profitSharingConfirm(paymentId, orderNo, confirmAmt, divMembers, null, null);
+    }
+
+    /**
+     * 延时分账撤销。
+     * 仅对已支付完成且未确认成功的延时分账订单可撤销。
+     *
+     * @param paymentId Adapay 支付对象 id
+     * @param orderNo 商户撤销订单号，app_id 下唯一
+     * @param reverseAmt 撤销金额，必须大于 0
+     * @param reason 撤销原因
+     * @param notifyUrl 异步通知地址
+     * @return 撤销结果
+     */
+    public AdapayReverseResult profitSharingReverse(String paymentId, String orderNo, BigDecimal reverseAmt, String reason, String notifyUrl) {
+        if (StringUtils.isEmpty(paymentId)) {
+            throw new PayErrorException(new PayException("-1", "payment_id 不能为空"));
+        }
+        if (StringUtils.isEmpty(orderNo)) {
+            throw new PayErrorException(new PayException("-1", "order_no 不能为空"));
+        }
+        if (reverseAmt == null || reverseAmt.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new PayErrorException(new PayException("-1", "reverse_amt 必须大于 0"));
+        }
+
+        final Map<String, Object> params = new HashMap<String, Object>(8);
+        params.put("app_id", payConfigStorage.getAppId());
+        params.put("payment_id", paymentId);
+        params.put("order_no", orderNo);
+        params.put("reverse_amt", reverseAmt.setScale(2, BigDecimal.ROUND_HALF_UP).toString());
+        if (StringUtils.isNotEmpty(reason)) {
+            params.put("reason", reason);
+        }
+        if (StringUtils.isNotEmpty(notifyUrl)) {
+            params.put("notify_url", notifyUrl);
+        } else if (StringUtils.isNotEmpty(payConfigStorage.getNotifyUrl())) {
+            params.put("notify_url", payConfigStorage.getNotifyUrl());
+        }
+
+        Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return createPaymentReverse(params);
+            }
+        }, "Adapay延时分账撤销失败");
+        enrichProfitSharingStatus(result);
+        return new AdapayReverseResult(result);
+    }
+
+    /**
+     * 延时分账撤销（简化版）。
+     *
+     * @param paymentId Adapay 支付对象 id
+     * @param orderNo 商户撤销订单号
+     * @param reverseAmt 撤销金额
+     * @return 撤销结果
+     */
+    public AdapayReverseResult profitSharingReverse(String paymentId, String orderNo, BigDecimal reverseAmt) {
+        return profitSharingReverse(paymentId, orderNo, reverseAmt, null, null);
+    }
+
+    /**
+     * 查询分账确认单。
+     *
+     * @param paymentConfirmId 支付确认对象 id
+     * @return 分账确认详情
+     */
+    public Map<String, Object> queryProfitSharingConfirm(String paymentConfirmId) {
+        if (StringUtils.isEmpty(paymentConfirmId)) {
+            throw new PayErrorException(new PayException("-1", "payment_confirm_id 不能为空"));
+        }
+        final Map<String, Object> params = new HashMap<String, Object>(2);
+        params.put("payment_confirm_id", paymentConfirmId);
+
+        Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return queryPaymentConfirm(params);
+            }
+        }, "查询Adapay分账确认单失败");
+        enrichProfitSharingStatus(result);
+        return result;
+    }
+
+    /**
+     * 查询分账确认单列表。
+     *
+     * @param paymentId 支付对象 id，可选
+     * @param orderNo 商户订单号，可选
+     * @param pageIndex 页码，默认 1
+     * @param pageSize 每页数量，默认 10
+     * @return 分账确认单列表
+     */
+    public Map<String, Object> queryProfitSharingConfirmList(String paymentId, String orderNo, Integer pageIndex, Integer pageSize) {
+        final Map<String, Object> params = new HashMap<String, Object>(8);
+        params.put("app_id", payConfigStorage.getAppId());
+        if (StringUtils.isNotEmpty(paymentId)) {
+            params.put("payment_id", paymentId);
+        }
+        if (StringUtils.isNotEmpty(orderNo)) {
+            params.put("order_no", orderNo);
+        }
+        params.put("page_index", pageIndex == null ? 1 : pageIndex);
+        params.put("page_size", pageSize == null ? 10 : pageSize);
+
+        return executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return queryPaymentConfirmList(params);
+            }
+        }, "查询Adapay分账确认单列表失败");
+    }
+
+    /**
+     * 查询分账撤销单。
+     *
+     * @param reverseId 支付撤销对象 id
+     * @return 分账撤销详情
+     */
+    public Map<String, Object> queryProfitSharingReverse(String reverseId) {
+        if (StringUtils.isEmpty(reverseId)) {
+            throw new PayErrorException(new PayException("-1", "reverse_id 不能为空"));
+        }
+        final Map<String, Object> params = new HashMap<String, Object>(2);
+        params.put("reverse_id", reverseId);
+
+        Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return queryPaymentReverse(params);
+            }
+        }, "查询Adapay分账撤销单失败");
+        enrichProfitSharingStatus(result);
+        return result;
+    }
+
+    /**
+     * 查询分账撤销单列表。
+     *
+     * @param paymentId 支付对象 id，可选
+     * @param pageIndex 页码，默认 1
+     * @param pageSize 每页数量，默认 10
+     * @return 分账撤销单列表
+     */
+    public Map<String, Object> queryProfitSharingReverseList(String paymentId, Integer pageIndex, Integer pageSize) {
+        final Map<String, Object> params = new HashMap<String, Object>(8);
+        params.put("app_id", payConfigStorage.getAppId());
+        if (StringUtils.isNotEmpty(paymentId)) {
+            params.put("payment_id", paymentId);
+        }
+        params.put("page_index", pageIndex == null ? 1 : pageIndex);
+        params.put("page_size", pageSize == null ? 10 : pageSize);
+
+        return executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return queryPaymentReverseList(params);
+            }
+        }, "查询Adapay分账撤销单列表失败");
+    }
+
+    /**
+     * 创建个人分账对象（Member）。
+     * 用于分账功能时，不要上传手机号、用户姓名、证件类型、证件号。
+     *
+     * @param params 请求参数，至少包含 member_id
+     * @return Member 创建结果
+     */
+    public Map<String, Object> createDivMember(Map<String, Object> params) {
+        final Map<String, Object> requestParams = params == null ? new HashMap<String, Object>(4) : params;
+        requestParams.put("app_id", payConfigStorage.getAppId());
+
+        return executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return Member.create(requestParams, payConfigStorage.getMerchantKey());
+            }
+        }, "创建Adapay分账对象失败");
+    }
+
+    /**
+     * 创建企业分账对象（CorpMember）。
+     *
+     * @param params 请求参数
+     * @param attachFile 企业附件 zip 文件
+     * @return CorpMember 创建结果
+     */
+    public Map<String, Object> createCorpDivMember(Map<String, Object> params, java.io.File attachFile) {
+        final Map<String, Object> requestParams = params == null ? new HashMap<String, Object>(4) : params;
+        requestParams.put("app_id", payConfigStorage.getAppId());
+
+        final java.io.File file = attachFile;
+        return executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return CorpMember.create(requestParams, file, payConfigStorage.getMerchantKey());
+            }
+        }, "创建Adapay企业分账对象失败");
+    }
+
+    /**
+     * 为分账对象绑定结算银行卡（SettleAccount）。
+     *
+     * @param params 请求参数，必须包含 member_id、channel、account_info
+     * @return SettleAccount 创建结果
+     */
+    public Map<String, Object> createDivSettleAccount(Map<String, Object> params) {
+        final Map<String, Object> requestParams = params == null ? new HashMap<String, Object>(4) : params;
+        requestParams.put("app_id", payConfigStorage.getAppId());
+
+        return executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return SettleAccount.create(requestParams, payConfigStorage.getMerchantKey());
+            }
+        }, "创建Adapay分账结算账户失败");
+    }
+
+    private String buildDivMembers(List<AdapayDivMember> divMembers) {
+        List<Map<String, Object>> list = new ArrayList<Map<String, Object>>(divMembers.size());
+        for (AdapayDivMember member : divMembers) {
+            list.add(member.toMap());
+        }
+        return JSON.toJSONString(list);
+    }
+
+    private void enrichProfitSharingStatus(Map<String, Object> result) {
+        if (result == null) {
+            return;
+        }
+        String status = getString(result, "status");
+        if (status == null) {
+            status = getString(result, "trans_status");
+        }
+        AdapayStatus adapayStatus = AdapayStatus.profitSharing(status);
+        enrichStatus(result, adapayStatus);
+    }
+
     @Override
     public PayMessage createMessage(Map<String, Object> params) {
         return new AdapayPayMessage(params);
@@ -667,6 +1023,30 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
 
     protected Map<String, Object> downloadAdapayBill(Map<String, Object> params) throws BaseAdaPayException {
         return Bill.download(params, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> createPaymentConfirm(Map<String, Object> params) throws BaseAdaPayException {
+        return Payment.createConfirm(params, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> queryPaymentConfirm(Map<String, Object> params) throws BaseAdaPayException {
+        return Payment.queryConfirm(params, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> queryPaymentConfirmList(Map<String, Object> params) throws BaseAdaPayException {
+        return Payment.queryConfirmList(params, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> createPaymentReverse(Map<String, Object> params) throws BaseAdaPayException {
+        return Payment.createReverse(params, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> queryPaymentReverse(Map<String, Object> params) throws BaseAdaPayException {
+        return Payment.queryReverse(params, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> queryPaymentReverseList(Map<String, Object> params) throws BaseAdaPayException {
+        return Payment.queryReverseList(params, payConfigStorage.getMerchantKey());
     }
 
     private <T> T executeWithConfig(AdapayInvoker<T> invoker, String errorMessage) {

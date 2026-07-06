@@ -13,6 +13,7 @@
 - 订单查询、关闭
 - 退款及退款查询
 - 账单下载
+- **分账（实时分账、延时分账、分账确认、分账撤销、分账查询）**
 
 ## 使用方法
 
@@ -119,6 +120,98 @@ refundOrder.setRefundAmount(new BigDecimal("0.01"));
 refundOrder.setDescription("退款原因");
 
 RefundResult refundResult = payService.refund(refundOrder);
+```
+
+### 7. 分账
+
+#### 7.1 实时分账
+
+支付时直接传入 `div_members`，支付成功后会自动分账。
+
+```java
+import com.holuntech.pay.adapay.bean.AdapayDivMember;
+
+List<AdapayDivMember> divMembers = new ArrayList<>();
+divMembers.add(new AdapayDivMember("member_id_001", new BigDecimal("0.05"), "Y")); // 手续费承担方
+divMembers.add(new AdapayDivMember("member_id_002", new BigDecimal("0.03"), "N"));
+
+Map<String, Object> result = payService.orderInfoWithProfitSharing(order, divMembers);
+```
+
+#### 7.2 延时分账
+
+先发起延时支付，支付完成后再调用分账确认。
+
+```java
+// 1. 发起延时分账支付
+Map<String, Object> delayResult = payService.orderInfoWithDelayProfitSharing(order);
+String paymentId = (String) delayResult.get("id");
+
+// 2. 延时分账确认
+AdapayProfitSharingResult confirmResult = payService.profitSharingConfirm(
+        paymentId,
+        "CONFIRM_" + System.currentTimeMillis(),
+        new BigDecimal("0.08"),
+        divMembers,
+        "分账确认",
+        "I" // I-交易金额中扣取手续费，O-商户手续费账户扣取
+);
+```
+
+#### 7.3 分账撤销
+
+仅对已支付完成、未确认成功的延时分账订单可撤销。
+
+```java
+AdapayReverseResult reverseResult = payService.profitSharingReverse(
+        paymentId,
+        "REVERSE_" + System.currentTimeMillis(),
+        new BigDecimal("0.08"),
+        "撤销原因"
+);
+```
+
+#### 7.4 分账查询
+
+```java
+// 查询分账确认单
+Map<String, Object> confirmDetail = payService.queryProfitSharingConfirm(paymentConfirmId);
+
+// 查询分账确认单列表
+Map<String, Object> confirmList = payService.queryProfitSharingConfirmList(paymentId, null, 1, 10);
+
+// 查询分账撤销单
+Map<String, Object> reverseDetail = payService.queryProfitSharingReverse(reverseId);
+
+// 查询分账撤销单列表
+Map<String, Object> reverseList = payService.queryProfitSharingReverseList(paymentId, 1, 10);
+```
+
+#### 7.5 分账对象与结算账户
+
+```java
+// 创建个人分账对象（用于分账时不要上传手机号、姓名、证件信息）
+Map<String, Object> memberParams = new HashMap<>();
+memberParams.put("member_id", "member_id_001");
+Map<String, Object> memberResult = payService.createDivMember(memberParams);
+
+// 为企业分账对象开户
+Map<String, Object> corpParams = new HashMap<>();
+corpParams.put("member_id", "member_id_corp_001");
+corpParams.put("order_no", "CORP_" + System.currentTimeMillis());
+// ... 其他企业必填字段
+Map<String, Object> corpResult = payService.createCorpDivMember(corpParams, new File("/path/to/attach.zip"));
+
+// 为分账对象绑定结算银行卡
+Map<String, Object> settleParams = new HashMap<>();
+settleParams.put("member_id", "member_id_001");
+settleParams.put("channel", "channel_code");
+Map<String, Object> accountInfo = new HashMap<>();
+accountInfo.put("card_id", "622202...");
+accountInfo.put("card_name", "张三");
+// ... 其他 account_info 字段
+settleParams.put("account_info", accountInfo);
+Map<String, Object> settleResult = payService.createDivSettleAccount(settleParams);
 ```
 
 ## yshop / Spring Boot 接入

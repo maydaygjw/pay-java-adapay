@@ -14,6 +14,9 @@ public enum AdapayStatus {
     REFUND_SUCCESS("REFUND_SUCCESS", "退款成功"),
     REFUND_PROCESSING("REFUND_PROCESSING", "退款中"),
     REFUND_FAILED("REFUND_FAILED", "退款失败"),
+    SHARE_SUCCESS("SHARE_SUCCESS", "分账成功"),
+    SHARE_PROCESSING("SHARE_PROCESSING", "分账中"),
+    SHARE_FAILED("SHARE_FAILED", "分账失败"),
     UNKNOWN("UNKNOWN", "未知状态");
 
     private final String code;
@@ -61,10 +64,29 @@ public enum AdapayStatus {
         return UNKNOWN;
     }
 
+    public static AdapayStatus profitSharing(String status) {
+        if ("succeeded".equalsIgnoreCase(status) || "S".equalsIgnoreCase(status)) {
+            return SHARE_SUCCESS;
+        }
+        if ("pending".equalsIgnoreCase(status) || "P".equalsIgnoreCase(status) || "I".equalsIgnoreCase(status)) {
+            return SHARE_PROCESSING;
+        }
+        if ("failed".equalsIgnoreCase(status) || "F".equalsIgnoreCase(status)) {
+            return SHARE_FAILED;
+        }
+        return UNKNOWN;
+    }
+
     public static AdapayStatus from(String eventType, String status, String object) {
         if (eventType != null) {
             if (eventType.startsWith("refund.")) {
                 return refund(status);
+            }
+            if (eventType.startsWith("payment.confirm.")) {
+                return profitSharing(status);
+            }
+            if (eventType.startsWith("payment.reverse.")) {
+                return profitSharing(status);
             }
             if ("payment.close.succeeded".equals(eventType)) {
                 return CLOSED;
@@ -75,6 +97,9 @@ public enum AdapayStatus {
         }
         if ("refund".equalsIgnoreCase(object)) {
             return refund(status);
+        }
+        if ("payment_confirm".equalsIgnoreCase(object) || "payment_reverse".equalsIgnoreCase(object)) {
+            return profitSharing(status);
         }
         return payment(status);
     }
