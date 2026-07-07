@@ -50,8 +50,9 @@ public class AdapayPayConfigStorage extends BasePayConfigStorage {
     /**
      * 是否开启调试模式，默认false
      * 开启后会有详细的日志输出
+     * 也可通过环境变量 ADAPAY_DEBUG=true 开启
      */
-    private boolean debug = false;
+    private boolean debug = Boolean.parseBoolean(System.getenv().getOrDefault("ADAPAY_DEBUG", "false"));
 
     /**
      * 是否验证RSA签名，默认true
