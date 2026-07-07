@@ -58,6 +58,9 @@ config.setReturnUrl("https://your-domain.com/return");
 config.setProdMode(false);
 config.setDebug(true);
 
+// 也支持通过环境变量 ADAPAY_DEBUG=true 开启调试模式
+// config.setDebug(...) 会覆盖环境变量值
+
 // 创建支付服务
 AdapayPayService payService = new AdapayPayService(config);
 ```
