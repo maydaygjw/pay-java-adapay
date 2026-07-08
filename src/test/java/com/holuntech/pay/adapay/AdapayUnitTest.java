@@ -133,6 +133,18 @@ public class AdapayUnitTest {
         assertTrue(result.isFailed());
     }
 
+    @Test
+    public void deleteProfitRecipientDeletesSettleAccount() {
+        TestableAdapayPayService service = new TestableAdapayPayService(baseConfig(null));
+
+        Map<String, Object> result = service.deleteProfitRecipient("settle_1");
+
+        assertEquals("settle_1", service.deletedSettleAccountParams.get("settle_account_id"));
+        assertEquals("app_test", service.deletedSettleAccountParams.get("app_id"));
+        assertEquals("settle_1", result.get("settle_account_id"));
+        assertEquals("succeeded", result.get("status"));
+    }
+
     private static AdapayPayConfigStorage baseConfig(String publicKey) {
         AdapayPayConfigStorage config = new AdapayPayConfigStorage();
         config.setAppId("app_test");
@@ -148,6 +160,7 @@ public class AdapayUnitTest {
     private static class TestableAdapayPayService extends AdapayPayService {
 
         private String refundPaymentId;
+        private Map<String, Object> deletedSettleAccountParams;
 
         TestableAdapayPayService(AdapayPayConfigStorage payConfigStorage) {
             super(payConfigStorage);
@@ -178,6 +191,15 @@ public class AdapayUnitTest {
             result.put("refund_order_no", params.get("refund_order_no"));
             result.put("refund_amt", params.get("refund_amt"));
             result.put("status", "pending");
+            return result;
+        }
+
+        @Override
+        protected Map<String, Object> deleteSettleAccount(Map<String, Object> params) {
+            deletedSettleAccountParams = new HashMap<String, Object>(params);
+            Map<String, Object> result = new HashMap<String, Object>();
+            result.put("settle_account_id", params.get("settle_account_id"));
+            result.put("status", "succeeded");
             return result;
         }
     }

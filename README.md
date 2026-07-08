@@ -215,6 +215,11 @@ accountInfo.put("card_name", "张三");
 // ... 其他 account_info 字段
 settleParams.put("account_info", accountInfo);
 Map<String, Object> settleResult = payService.createDivSettleAccount(settleParams);
+
+// 删除分账收款人时，先清理 Adapay 结算账户，再删除本地记录
+String settleAccountId = (String) settleResult.get("id");
+Map<String, Object> deleteResult = payService.deleteProfitRecipient(settleAccountId);
+// 等价调用：payService.deleteDivSettleAccount(settleAccountId)
 ```
 
 ## yshop / Spring Boot 接入

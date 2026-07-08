@@ -838,6 +838,54 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
         }, "创建Adapay分账结算账户失败");
     }
 
+    /**
+     * 删除分账对象绑定的结算账户（SettleAccount）。
+     * 后端删除分账收款人时应先调用该方法清理 Adapay 侧结算账户，再删除本地记录。
+     *
+     * @param settleAccountId Adapay 结算账户 id
+     * @return SettleAccount 删除结果
+     */
+    public Map<String, Object> deleteDivSettleAccount(String settleAccountId) {
+        if (StringUtils.isEmpty(settleAccountId)) {
+            throw new PayErrorException(new PayException("-1", "settle_account_id 不能为空"));
+        }
+        Map<String, Object> params = new HashMap<String, Object>(4);
+        params.put("settle_account_id", settleAccountId);
+        return deleteDivSettleAccount(params);
+    }
+
+    /**
+     * 删除分账对象绑定的结算账户（SettleAccount）。
+     *
+     * @param params 请求参数，必须包含 settle_account_id
+     * @return SettleAccount 删除结果
+     */
+    public Map<String, Object> deleteDivSettleAccount(Map<String, Object> params) {
+        final Map<String, Object> requestParams = params == null ? new HashMap<String, Object>(4) : params;
+        String settleAccountId = getString(requestParams, "settle_account_id");
+        if (StringUtils.isEmpty(settleAccountId)) {
+            throw new PayErrorException(new PayException("-1", "settle_account_id 不能为空"));
+        }
+        requestParams.put("app_id", payConfigStorage.getAppId());
+
+        return executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return deleteSettleAccount(requestParams);
+            }
+        }, "删除Adapay分账结算账户失败");
+    }
+
+    /**
+     * 删除分账收款人对应的 Adapay 结算账户。
+     *
+     * @param settleAccountId Adapay 结算账户 id
+     * @return SettleAccount 删除结果
+     */
+    public Map<String, Object> deleteProfitRecipient(String settleAccountId) {
+        return deleteDivSettleAccount(settleAccountId);
+    }
+
     private String buildDivMembers(List<AdapayDivMember> divMembers) {
         List<Map<String, Object>> list = new ArrayList<Map<String, Object>>(divMembers.size());
         for (AdapayDivMember member : divMembers) {
@@ -1047,6 +1095,10 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
 
     protected Map<String, Object> queryPaymentReverseList(Map<String, Object> params) throws BaseAdaPayException {
         return Payment.queryReverseList(params, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> deleteSettleAccount(Map<String, Object> params) throws BaseAdaPayException {
+        return SettleAccount.delete(params, payConfigStorage.getMerchantKey());
     }
 
     private <T> T executeWithConfig(AdapayInvoker<T> invoker, String errorMessage) {
