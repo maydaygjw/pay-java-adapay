@@ -6,7 +6,9 @@ import com.egzosn.pay.common.bean.TransactionType;
 import com.egzosn.pay.common.exception.PayErrorException;
 import com.holuntech.pay.adapay.api.AdapayPayConfigStorage;
 import com.holuntech.pay.adapay.api.AdapayPayService;
+import com.holuntech.pay.adapay.bean.AdapayDivMember;
 import com.holuntech.pay.adapay.bean.AdapayPayMessage;
+import com.holuntech.pay.adapay.bean.AdapayProfitSharingResult;
 import com.holuntech.pay.adapay.bean.AdapayRefundResult;
 import com.holuntech.pay.adapay.bean.AdapayReverseResult;
 import com.holuntech.pay.adapay.bean.AdapayStatus;
@@ -180,6 +182,23 @@ public class AdapayUnitTest {
         assertEquals("app_test", service.paymentConfirmQueryListParams.get("app_id"));
         assertEquals("pay_1", service.paymentConfirmQueryListParams.get("payment_id"));
         assertNotNull(listResult.get("payment_confirmations"));
+    }
+
+    @Test
+    public void profitSharingConfirmKeepsDivMembersAsJsonArray() {
+        TestableAdapayPayService service = new TestableAdapayPayService(baseConfig(null));
+        List<AdapayDivMember> divMembers = new ArrayList<AdapayDivMember>();
+        divMembers.add(new AdapayDivMember("member_1", new BigDecimal("0.02"), "Y"));
+
+        AdapayProfitSharingResult result = service.profitSharingConfirm(
+                "pay_1", "CONFIRM_1", new BigDecimal("0.03"), divMembers);
+
+        Object value = service.paymentConfirmParams.get("div_members");
+        assertTrue(value instanceof List);
+        assertEquals("member_1", ((Map<?, ?>) ((List<?>) value).get(0)).get("member_id"));
+        assertTrue(JSON.parseObject(JSON.toJSONString(service.paymentConfirmParams))
+                .get("div_members") instanceof List);
+        assertTrue(result.isSuccess());
     }
 
     @Test

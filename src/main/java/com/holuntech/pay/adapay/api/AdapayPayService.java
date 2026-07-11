@@ -13,7 +13,6 @@ import com.holuntech.pay.adapay.bean.AdapayTransactionType;
 import com.holuntech.pay.adapay.bean.AdapayRefundResult;
 import com.holuntech.pay.adapay.bean.AdapayStatus;
 import com.huifu.adapay.core.util.AdapaySign;
-import com.alibaba.fastjson.JSON;
 import com.huifu.adapay.model.Bill;
 import com.huifu.adapay.model.Payment;
 import com.huifu.adapay.model.PaymentConfirm;
@@ -976,12 +975,12 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
         return deleteDivSettleAccount(settleAccountId);
     }
 
-    private String buildDivMembers(List<AdapayDivMember> divMembers) {
+    private List<Map<String, Object>> buildDivMembers(List<AdapayDivMember> divMembers) {
         List<Map<String, Object>> list = new ArrayList<Map<String, Object>>(divMembers.size());
         for (AdapayDivMember member : divMembers) {
             list.add(member.toMap());
         }
-        return JSON.toJSONString(list);
+        return list;
     }
 
     private void enrichProfitSharingStatus(Map<String, Object> result) {
