@@ -16,6 +16,7 @@ import com.huifu.adapay.core.util.AdapaySign;
 import com.alibaba.fastjson.JSON;
 import com.huifu.adapay.model.Bill;
 import com.huifu.adapay.model.Payment;
+import com.huifu.adapay.model.PaymentConfirm;
 import com.huifu.adapay.model.PaymentReverse;
 import com.huifu.adapay.model.Refund;
 import com.huifu.adapay.model.Checkout;
@@ -612,6 +613,27 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
     }
 
     /**
+     * 分账确认。
+     * 直接封装 Adapay PaymentConfirm.create，自动补充 app_id、初始化配置并传入 merchantKey。
+     *
+     * @param params Adapay 分账确认请求参数
+     * @return 分账确认结果
+     */
+    public Map<String, Object> profitSharingConfirm(Map<String, Object> params) {
+        final Map<String, Object> requestParams = params == null ? new HashMap<String, Object>(4) : params;
+        requestParams.put("app_id", payConfigStorage.getAppId());
+
+        Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return createPaymentConfirm(requestParams);
+            }
+        }, "Adapay分账确认失败");
+        enrichProfitSharingStatus(result);
+        return result;
+    }
+
+    /**
      * 延时分账确认（简化版）。
      *
      * @param paymentId Adapay 支付对象 id
@@ -735,6 +757,25 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
     }
 
     /**
+     * 分账查询。
+     * 直接封装 Adapay PaymentConfirm.query，自动初始化配置并传入 merchantKey。
+     *
+     * @param params Adapay 分账查询请求参数
+     * @return 分账确认详情
+     */
+    public Map<String, Object> profitSharingQuery(Map<String, Object> params) {
+        final Map<String, Object> requestParams = params == null ? new HashMap<String, Object>(4) : params;
+        Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return queryPaymentConfirm(requestParams);
+            }
+        }, "Adapay分账查询失败");
+        enrichProfitSharingStatus(result);
+        return result;
+    }
+
+    /**
      * 查询分账确认单列表。
      *
      * @param paymentId 支付对象 id，可选
@@ -761,6 +802,25 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
                 return queryPaymentConfirmList(params);
             }
         }, "查询Adapay分账确认单列表失败");
+    }
+
+    /**
+     * 分账列表查询。
+     * 直接封装 Adapay PaymentConfirm.queryList，自动补充 app_id、初始化配置并传入 merchantKey。
+     *
+     * @param params Adapay 分账列表查询请求参数
+     * @return 分账确认单列表
+     */
+    public Map<String, Object> profitSharingQueryList(Map<String, Object> params) {
+        final Map<String, Object> requestParams = params == null ? new HashMap<String, Object>(4) : params;
+        requestParams.put("app_id", payConfigStorage.getAppId());
+
+        return executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return queryPaymentConfirmList(requestParams);
+            }
+        }, "Adapay分账列表查询失败");
     }
 
     /**
@@ -1104,15 +1164,15 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
     }
 
     protected Map<String, Object> createPaymentConfirm(Map<String, Object> params) throws BaseAdaPayException {
-        return Payment.createConfirm(params, payConfigStorage.getMerchantKey());
+        return PaymentConfirm.create(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> queryPaymentConfirm(Map<String, Object> params) throws BaseAdaPayException {
-        return Payment.queryConfirm(params, payConfigStorage.getMerchantKey());
+        return PaymentConfirm.query(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> queryPaymentConfirmList(Map<String, Object> params) throws BaseAdaPayException {
-        return Payment.queryConfirmList(params, payConfigStorage.getMerchantKey());
+        return PaymentConfirm.queryList(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> createPaymentReverse(Map<String, Object> params) throws BaseAdaPayException {

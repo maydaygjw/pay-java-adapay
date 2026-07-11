@@ -150,6 +150,39 @@ public class AdapayUnitTest {
     }
 
     @Test
+    public void mapProfitSharingMethodsUsePaymentConfirmWrappers() {
+        TestableAdapayPayService service = new TestableAdapayPayService(baseConfig(null));
+
+        Map<String, Object> confirmParams = new HashMap<String, Object>();
+        confirmParams.put("payment_id", "pay_1");
+        confirmParams.put("order_no", "CONFIRM_1");
+        confirmParams.put("confirm_amt", "0.10");
+
+        Map<String, Object> confirmResult = service.profitSharingConfirm(confirmParams);
+
+        assertEquals("app_test", service.paymentConfirmParams.get("app_id"));
+        assertEquals("pay_1", service.paymentConfirmParams.get("payment_id"));
+        assertEquals("pc_1", confirmResult.get("id"));
+        assertEquals(AdapayStatus.SHARE_SUCCESS.getCode(), confirmResult.get("sdk_status"));
+
+        Map<String, Object> queryParams = new HashMap<String, Object>();
+        queryParams.put("payment_confirm_id", "pc_1");
+        Map<String, Object> queryResult = service.profitSharingQuery(queryParams);
+
+        assertEquals("pc_1", service.paymentConfirmQueryParams.get("payment_confirm_id"));
+        assertEquals("pc_1", queryResult.get("id"));
+        assertEquals(AdapayStatus.SHARE_PROCESSING.getCode(), queryResult.get("sdk_status"));
+
+        Map<String, Object> listParams = new HashMap<String, Object>();
+        listParams.put("payment_id", "pay_1");
+        Map<String, Object> listResult = service.profitSharingQueryList(listParams);
+
+        assertEquals("app_test", service.paymentConfirmQueryListParams.get("app_id"));
+        assertEquals("pay_1", service.paymentConfirmQueryListParams.get("payment_id"));
+        assertNotNull(listResult.get("payment_confirmations"));
+    }
+
+    @Test
     public void reverseValidatesInput() {
         TestableAdapayPayService service = new TestableAdapayPayService(baseConfig(null));
 
@@ -244,6 +277,9 @@ public class AdapayUnitTest {
         private String refundPaymentId;
         private Map<String, Object> deletedSettleAccountParams;
         private Map<String, Object> reverseParams;
+        private Map<String, Object> paymentConfirmParams;
+        private Map<String, Object> paymentConfirmQueryParams;
+        private Map<String, Object> paymentConfirmQueryListParams;
 
         TestableAdapayPayService(AdapayPayConfigStorage payConfigStorage) {
             super(payConfigStorage);
@@ -283,6 +319,44 @@ public class AdapayUnitTest {
             Map<String, Object> result = new HashMap<String, Object>();
             result.put("settle_account_id", params.get("settle_account_id"));
             result.put("status", "succeeded");
+            return result;
+        }
+
+        @Override
+        protected Map<String, Object> createPaymentConfirm(Map<String, Object> params) {
+            paymentConfirmParams = new HashMap<String, Object>(params);
+            Map<String, Object> result = new HashMap<String, Object>();
+            result.put("id", "pc_1");
+            result.put("payment_id", params.get("payment_id"));
+            result.put("order_no", params.get("order_no"));
+            result.put("confirm_amt", params.get("confirm_amt"));
+            result.put("status", "succeeded");
+            return result;
+        }
+
+        @Override
+        protected Map<String, Object> queryPaymentConfirm(Map<String, Object> params) {
+            paymentConfirmQueryParams = new HashMap<String, Object>(params);
+            Map<String, Object> result = new HashMap<String, Object>();
+            result.put("id", params.get("payment_confirm_id"));
+            result.put("status", "pending");
+            return result;
+        }
+
+        @Override
+        protected Map<String, Object> queryPaymentConfirmList(Map<String, Object> params) {
+            paymentConfirmQueryListParams = new HashMap<String, Object>(params);
+
+            Map<String, Object> item = new HashMap<String, Object>();
+            item.put("id", "pc_1");
+            item.put("payment_id", params.get("payment_id"));
+            item.put("status", "succeeded");
+
+            List<Map<String, Object>> confirmations = new ArrayList<Map<String, Object>>();
+            confirmations.add(item);
+
+            Map<String, Object> result = new HashMap<String, Object>();
+            result.put("payment_confirmations", confirmations);
             return result;
         }
 

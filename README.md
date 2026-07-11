@@ -161,6 +161,18 @@ AdapayProfitSharingResult confirmResult = payService.profitSharingConfirm(
 );
 ```
 
+也可以直接传 Adapay 原始参数，SDK 会自动补 `app_id`、初始化 Adapay 配置并传入当前商户的 `merchantKey`：
+
+```java
+Map<String, Object> confirmParams = new HashMap<>();
+confirmParams.put("payment_id", paymentId);
+confirmParams.put("order_no", "CONFIRM_" + System.currentTimeMillis());
+confirmParams.put("confirm_amt", "0.08");
+confirmParams.put("div_members", JSON.toJSONString(divMembers));
+
+Map<String, Object> confirmMap = payService.profitSharingConfirm(confirmParams);
+```
+
 #### 7.3 分账撤销
 
 仅对已支付完成、未确认成功的延时分账订单可撤销。
@@ -182,6 +194,17 @@ Map<String, Object> confirmDetail = payService.queryProfitSharingConfirm(payment
 
 // 查询分账确认单列表
 Map<String, Object> confirmList = payService.queryProfitSharingConfirmList(paymentId, null, 1, 10);
+
+// 直接使用 PaymentConfirm.query / queryList 参数
+Map<String, Object> queryParams = new HashMap<>();
+queryParams.put("payment_confirm_id", paymentConfirmId);
+Map<String, Object> confirmDetailRaw = payService.profitSharingQuery(queryParams);
+
+Map<String, Object> listParams = new HashMap<>();
+listParams.put("payment_id", paymentId);
+listParams.put("page_index", 1);
+listParams.put("page_size", 10);
+Map<String, Object> confirmListRaw = payService.profitSharingQueryList(listParams);
 
 // 查询分账撤销单
 Map<String, Object> reverseDetail = payService.queryProfitSharingReverse(reverseId);
