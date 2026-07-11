@@ -16,6 +16,7 @@ import com.huifu.adapay.core.util.AdapaySign;
 import com.alibaba.fastjson.JSON;
 import com.huifu.adapay.model.Bill;
 import com.huifu.adapay.model.Payment;
+import com.huifu.adapay.model.PaymentReverse;
 import com.huifu.adapay.model.Refund;
 import com.huifu.adapay.model.Checkout;
 import com.huifu.adapay.model.Member;
@@ -635,6 +636,47 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
      * @return 撤销结果
      */
     public AdapayReverseResult profitSharingReverse(String paymentId, String orderNo, BigDecimal reverseAmt, String reason, String notifyUrl) {
+        return doPaymentReverse(paymentId, orderNo, reverseAmt, reason, notifyUrl);
+    }
+
+    /**
+     * 延时分账撤销（简化版）。
+     *
+     * @param paymentId Adapay 支付对象 id
+     * @param orderNo 商户撤销订单号
+     * @param reverseAmt 撤销金额
+     * @return 撤销结果
+     */
+    public AdapayReverseResult profitSharingReverse(String paymentId, String orderNo, BigDecimal reverseAmt) {
+        return doPaymentReverse(paymentId, orderNo, reverseAmt, null, null);
+    }
+
+    /**
+     * 创建支付撤销对象（用于延时分账订单在未确认分账前撤销支付）。
+     *
+     * @param paymentId  原支付对象 ID（Adapay payment_id）
+     * @param orderNo    商户撤销请求单号（app_id 下唯一）
+     * @param reverseAmt 撤销金额（必须大于 0，保留两位小数）
+     * @return Adapay 支付撤销结果
+     */
+    public AdapayReverseResult reverse(String paymentId, String orderNo, BigDecimal reverseAmt) {
+        return reverse(paymentId, orderNo, reverseAmt, null);
+    }
+
+    /**
+     * 创建支付撤销对象（用于延时分账订单在未确认分账前撤销支付）。
+     *
+     * @param paymentId  原支付对象 ID（Adapay payment_id）
+     * @param orderNo    商户撤销请求单号（app_id 下唯一）
+     * @param reverseAmt 撤销金额（必须大于 0，保留两位小数）
+     * @param reason     撤销原因（可选）
+     * @return Adapay 支付撤销结果
+     */
+    public AdapayReverseResult reverse(String paymentId, String orderNo, BigDecimal reverseAmt, String reason) {
+        return doPaymentReverse(paymentId, orderNo, reverseAmt, reason, null);
+    }
+
+    private AdapayReverseResult doPaymentReverse(String paymentId, String orderNo, BigDecimal reverseAmt, String reason, String notifyUrl) {
         if (StringUtils.isEmpty(paymentId)) {
             throw new PayErrorException(new PayException("-1", "payment_id 不能为空"));
         }
@@ -662,23 +704,11 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
         Map<String, Object> result = executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
             @Override
             public Map<String, Object> invoke() throws Exception {
-                return createPaymentReverse(params);
+                return createReverse(params);
             }
-        }, "Adapay延时分账撤销失败");
+        }, "Adapay支付撤销失败");
         enrichProfitSharingStatus(result);
         return new AdapayReverseResult(result);
-    }
-
-    /**
-     * 延时分账撤销（简化版）。
-     *
-     * @param paymentId Adapay 支付对象 id
-     * @param orderNo 商户撤销订单号
-     * @param reverseAmt 撤销金额
-     * @return 撤销结果
-     */
-    public AdapayReverseResult profitSharingReverse(String paymentId, String orderNo, BigDecimal reverseAmt) {
-        return profitSharingReverse(paymentId, orderNo, reverseAmt, null, null);
     }
 
     /**
@@ -1087,6 +1117,10 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
 
     protected Map<String, Object> createPaymentReverse(Map<String, Object> params) throws BaseAdaPayException {
         return Payment.createReverse(params, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> createReverse(Map<String, Object> params) throws BaseAdaPayException {
+        return PaymentReverse.create(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> queryPaymentReverse(Map<String, Object> params) throws BaseAdaPayException {

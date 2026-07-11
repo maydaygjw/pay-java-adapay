@@ -3,10 +3,12 @@ package com.holuntech.pay.adapay;
 import com.alibaba.fastjson.JSON;
 import com.egzosn.pay.common.bean.RefundOrder;
 import com.egzosn.pay.common.bean.TransactionType;
+import com.egzosn.pay.common.exception.PayErrorException;
 import com.holuntech.pay.adapay.api.AdapayPayConfigStorage;
 import com.holuntech.pay.adapay.api.AdapayPayService;
 import com.holuntech.pay.adapay.bean.AdapayPayMessage;
 import com.holuntech.pay.adapay.bean.AdapayRefundResult;
+import com.holuntech.pay.adapay.bean.AdapayReverseResult;
 import com.holuntech.pay.adapay.bean.AdapayStatus;
 import com.holuntech.pay.adapay.bean.AdapayTransactionType;
 import com.holuntech.pay.adapay.spring.boot.core.provider.merchant.platform.AdapayPaymentPlatform;
@@ -120,11 +122,13 @@ public class AdapayUnitTest {
     }
 
     @Test
-    public void refundResultStatusHelpers() {
-        AdapayRefundResult result = new AdapayRefundResult();
+    public void reverseResultStatusHelpers() {
+        AdapayReverseResult result = new AdapayReverseResult();
 
         result.setStatus("succeeded");
         assertTrue(result.isSuccess());
+        assertFalse(result.isProcessing());
+        assertFalse(result.isFailed());
 
         result.setStatus("pending");
         assertTrue(result.isProcessing());
@@ -145,6 +149,84 @@ public class AdapayUnitTest {
         assertEquals("succeeded", result.get("status"));
     }
 
+    @Test
+    public void reverseValidatesInput() {
+        TestableAdapayPayService service = new TestableAdapayPayService(baseConfig(null));
+
+        try {
+            service.reverse(null, "ORDER_REVERSE_1", new BigDecimal("0.01"));
+            fail("expected PayErrorException for empty paymentId");
+        } catch (PayErrorException e) {
+            assertTrue(e.getMessage().contains("payment_id"));
+        }
+
+        try {
+            service.reverse("pay_1", null, new BigDecimal("0.01"));
+            fail("expected PayErrorException for empty orderNo");
+        } catch (PayErrorException e) {
+            assertTrue(e.getMessage().contains("order_no"));
+        }
+
+        try {
+            service.reverse("pay_1", "ORDER_REVERSE_1", BigDecimal.ZERO);
+            fail("expected PayErrorException for zero reverseAmt");
+        } catch (PayErrorException e) {
+            assertTrue(e.getMessage().contains("reverse_amt"));
+        }
+    }
+
+    @Test
+    public void reverseCreatesRequestAndReturnsResult() {
+        AdapayPayConfigStorage config = baseConfig(null);
+        config.setNotifyUrl("https://example.com/notify");
+        TestableAdapayPayService service = new TestableAdapayPayService(config);
+
+        AdapayReverseResult result = service.reverse("pay_1", "ORDER_REVERSE_1", new BigDecimal("1.23"), "test reason");
+
+        Map<String, Object> params = service.reverseParams;
+        assertEquals("app_test", params.get("app_id"));
+        assertEquals("pay_1", params.get("payment_id"));
+        assertEquals("ORDER_REVERSE_1", params.get("order_no"));
+        assertEquals("1.23", params.get("reverse_amt"));
+        assertEquals("test reason", params.get("reason"));
+        assertEquals("https://example.com/notify", params.get("notify_url"));
+
+        assertEquals("reverse_1", result.getId());
+        assertEquals("pay_1", result.getPaymentId());
+        assertEquals("ORDER_REVERSE_1", result.getOrderNo());
+        assertEquals(new BigDecimal("1.23"), result.getReverseAmt());
+        assertEquals(new BigDecimal("1.23"), result.getReversedAmt());
+        assertEquals(new BigDecimal("0.00"), result.getConfirmedAmt());
+        assertEquals(new BigDecimal("0.00"), result.getRefundedAmt());
+        assertTrue(result.isSuccess());
+    }
+
+    @Test
+    public void reverseWithoutReasonAndNotifyUrl() {
+        AdapayPayConfigStorage config = baseConfig(null);
+        TestableAdapayPayService service = new TestableAdapayPayService(config);
+
+        service.reverse("pay_1", "ORDER_REVERSE_2", new BigDecimal("0.01"));
+
+        Map<String, Object> params = service.reverseParams;
+        assertNull(params.get("reason"));
+        assertNull(params.get("notify_url"));
+    }
+
+    @Test
+    public void profitSharingReverseStillWorks() {
+        AdapayPayConfigStorage config = baseConfig(null);
+        config.setNotifyUrl("https://example.com/notify");
+        TestableAdapayPayService service = new TestableAdapayPayService(config);
+
+        AdapayReverseResult result = service.profitSharingReverse("pay_1", "ORDER_REVERSE_3", new BigDecimal("0.02"), "reason", "https://custom/notify");
+
+        Map<String, Object> params = service.reverseParams;
+        assertEquals("https://custom/notify", params.get("notify_url"));
+        assertEquals("pay_1", result.getPaymentId());
+        assertTrue(result.isSuccess());
+    }
+
     private static AdapayPayConfigStorage baseConfig(String publicKey) {
         AdapayPayConfigStorage config = new AdapayPayConfigStorage();
         config.setAppId("app_test");
@@ -161,6 +243,7 @@ public class AdapayUnitTest {
 
         private String refundPaymentId;
         private Map<String, Object> deletedSettleAccountParams;
+        private Map<String, Object> reverseParams;
 
         TestableAdapayPayService(AdapayPayConfigStorage payConfigStorage) {
             super(payConfigStorage);
@@ -199,6 +282,21 @@ public class AdapayUnitTest {
             deletedSettleAccountParams = new HashMap<String, Object>(params);
             Map<String, Object> result = new HashMap<String, Object>();
             result.put("settle_account_id", params.get("settle_account_id"));
+            result.put("status", "succeeded");
+            return result;
+        }
+
+        @Override
+        protected Map<String, Object> createReverse(Map<String, Object> params) {
+            reverseParams = params;
+            Map<String, Object> result = new HashMap<String, Object>();
+            result.put("id", "reverse_1");
+            result.put("payment_id", params.get("payment_id"));
+            result.put("order_no", params.get("order_no"));
+            result.put("reverse_amt", params.get("reverse_amt"));
+            result.put("reversed_amt", params.get("reverse_amt"));
+            result.put("confirmed_amt", "0.00");
+            result.put("refunded_amt", "0.00");
             result.put("status", "succeeded");
             return result;
         }
