@@ -28,6 +28,9 @@ import com.holuntech.pay.adapay.bean.AdapayProfitSharingResult;
 import com.holuntech.pay.adapay.bean.AdapayReverseResult;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Date;
@@ -975,6 +978,113 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
         return deleteDivSettleAccount(settleAccountId);
     }
 
+    /**
+     * 查询收款人的结算明细。
+     *
+     * @param memberId 收款人 Member ID；查询商户自身时传 0
+     * @param settleAccountId Adapay 结算账户 id；查询商户自身时可为空
+     * @param beginDate 结算起始日期
+     * @param endDate 结算结束日期，和 beginDate 的日期差不能超过 31 天
+     * @return AdaPay 原始结算明细响应，明细为空时仍返回空的 settle_details
+     */
+    public Map<String, Object> querySettleDetail(String memberId, String settleAccountId,
+                                                  Date beginDate, Date endDate) {
+        Map<String, Object> params = new HashMap<String, Object>(5);
+        params.put("member_id", memberId);
+        if (StringUtils.isNotEmpty(settleAccountId)) {
+            params.put("settle_account_id", settleAccountId);
+        }
+        params.put("begin_date", beginDate);
+        params.put("end_date", endDate);
+        return querySettleDetail(params);
+    }
+
+    /**
+     * 查询收款人的结算明细。
+     *
+     * <p>Map 中必须包含 member_id、begin_date 和 end_date。日期值支持
+     * {@link Date}，也支持已经是 yyyyMMdd 或 yyyy-MM-dd 格式的字符串；
+     * 请求发出前统一转换为 yyyyMMdd。</p>
+     *
+     * @param params 请求参数，必须包含 member_id、begin_date、end_date
+     * @return AdaPay 原始结算明细响应
+     */
+    public Map<String, Object> querySettleDetail(Map<String, Object> params) {
+        if (params == null) {
+            throw new PayErrorException(new PayException("-1", "查询Adapay结算明细失败: 参数不能为空"));
+        }
+
+        final Map<String, Object> requestParams = new HashMap<String, Object>(params);
+        if (StringUtils.isEmpty(getString(requestParams, "member_id"))) {
+            throw new PayErrorException(new PayException("-1", "member_id 不能为空"));
+        }
+
+        String beginDate = formatSettleDetailDate(requestParams.get("begin_date"), "begin_date");
+        String endDate = formatSettleDetailDate(requestParams.get("end_date"), "end_date");
+        validateSettleDetailDateRange(beginDate, endDate);
+
+        requestParams.put("app_id", payConfigStorage.getAppId());
+        requestParams.put("begin_date", beginDate);
+        requestParams.put("end_date", endDate);
+        if (StringUtils.isEmpty(getString(requestParams, "settle_account_id"))) {
+            requestParams.remove("settle_account_id");
+        }
+
+        return executeWithConfig(new AdapayInvoker<Map<String, Object>>() {
+            @Override
+            public Map<String, Object> invoke() throws Exception {
+                return querySettleDetails(requestParams);
+            }
+        }, "查询Adapay结算明细失败");
+    }
+
+    private String formatSettleDetailDate(Object value, String parameterName) {
+        if (value == null) {
+            throw new PayErrorException(new PayException("-1", parameterName + " 不能为空"));
+        }
+
+        if (value instanceof Date) {
+            return DateUtils.formatDate((Date) value, DateUtils.YYYYMMDD);
+        }
+
+        String date = value.toString();
+        if (StringUtils.isEmpty(date)) {
+            throw new PayErrorException(new PayException("-1", parameterName + " 不能为空"));
+        }
+
+        try {
+            if (date.matches("\\d{8}")) {
+                LocalDate.parse(date, DateTimeFormatter.BASIC_ISO_DATE);
+                return date;
+            }
+            if (date.matches("\\d{4}-\\d{2}-\\d{2}")) {
+                return LocalDate.parse(date, DateTimeFormatter.ISO_LOCAL_DATE)
+                        .format(DateTimeFormatter.BASIC_ISO_DATE);
+            }
+        } catch (DateTimeParseException e) {
+            // Fall through to the common SDK exception below so callers get the parameter name.
+        }
+
+        throw new PayErrorException(new PayException("-1", parameterName + " 日期格式错误，应为 yyyyMMdd"));
+    }
+
+    private void validateSettleDetailDateRange(String beginDate, String endDate) {
+        try {
+            LocalDate begin = LocalDate.parse(beginDate, DateTimeFormatter.BASIC_ISO_DATE);
+            LocalDate end = LocalDate.parse(endDate, DateTimeFormatter.BASIC_ISO_DATE);
+            long days = java.time.temporal.ChronoUnit.DAYS.between(begin, end);
+            if (days < 0) {
+                throw new PayErrorException(new PayException("-1", "begin_date 不能晚于 end_date"));
+            }
+            if (days > 31) {
+                throw new PayErrorException(new PayException("-1", "查询结算明细的日期跨度不能超过31天"));
+            }
+        } catch (DateTimeParseException e) {
+            // formatSettleDetailDate already validates the input; retain a stable SDK exception if called internally.
+            throw new PayErrorException(new PayException("-1", "结算明细日期格式错误，应为 yyyyMMdd"));
+        }
+    }
+
     private List<Map<String, Object>> buildDivMembers(List<AdapayDivMember> divMembers) {
         List<Map<String, Object>> list = new ArrayList<Map<String, Object>>(divMembers.size());
         for (AdapayDivMember member : divMembers) {
@@ -1192,6 +1302,10 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
 
     protected Map<String, Object> deleteSettleAccount(Map<String, Object> params) throws BaseAdaPayException {
         return SettleAccount.delete(params, payConfigStorage.getMerchantKey());
+    }
+
+    protected Map<String, Object> querySettleDetails(Map<String, Object> params) throws BaseAdaPayException {
+        return SettleAccount.detail(params, payConfigStorage.getMerchantKey());
     }
 
     private <T> T executeWithConfig(AdapayInvoker<T> invoker, String errorMessage) {

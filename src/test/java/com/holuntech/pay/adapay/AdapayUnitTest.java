@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.egzosn.pay.common.bean.RefundOrder;
 import com.egzosn.pay.common.bean.TransactionType;
 import com.egzosn.pay.common.exception.PayErrorException;
+import com.egzosn.pay.common.util.DateUtils;
 import com.holuntech.pay.adapay.api.AdapayPayConfigStorage;
 import com.holuntech.pay.adapay.api.AdapayPayService;
 import com.holuntech.pay.adapay.bean.AdapayDivMember;
@@ -23,6 +24,7 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -279,6 +281,98 @@ public class AdapayUnitTest {
         assertTrue(result.isSuccess());
     }
 
+    @Test
+    public void querySettleDetailBuildsSdkRequestParameters() {
+        TestableAdapayPayService service = new TestableAdapayPayService(baseConfig(null));
+        Date beginDate = DateUtils.parseDate("2024-01-01", DateUtils.YYYY_MM_DD);
+        Date endDate = DateUtils.parseDate("2024-01-31", DateUtils.YYYY_MM_DD);
+
+        Map<String, Object> result = service.querySettleDetail("member_1", "settle_1", beginDate, endDate);
+
+        assertEquals("app_test", service.settleDetailParams.get("app_id"));
+        assertEquals("member_1", service.settleDetailParams.get("member_id"));
+        assertEquals("settle_1", service.settleDetailParams.get("settle_account_id"));
+        assertEquals("20240101", service.settleDetailParams.get("begin_date"));
+        assertEquals("20240131", service.settleDetailParams.get("end_date"));
+        assertEquals("list", result.get("object"));
+        assertEquals("succeeded", result.get("status"));
+
+        List<Map<String, Object>> details = (List<Map<String, Object>>) result.get("settle_details");
+        assertEquals(1, details.size());
+        assertEquals("20191014", details.get(0).get("settle_date"));
+        assertEquals("6.98", details.get(0).get("settle_amt"));
+        assertEquals("0.00", details.get(0).get("settle_fee_amt"));
+        assertEquals("succeeded", details.get(0).get("settle_stat"));
+        assertEquals("T1", details.get(0).get("settle_type"));
+        assertEquals("", details.get(0).get("settle_message"));
+    }
+
+    @Test
+    public void querySettleDetailForMerchantMayOmitSettleAccount() {
+        TestableAdapayPayService service = new TestableAdapayPayService(baseConfig(null));
+        Map<String, Object> params = new HashMap<String, Object>();
+        params.put("member_id", "0");
+        params.put("begin_date", "2024-01-01");
+        params.put("end_date", "20240102");
+
+        service.querySettleDetail(params);
+
+        assertEquals("0", service.settleDetailParams.get("member_id"));
+        assertFalse(service.settleDetailParams.containsKey("settle_account_id"));
+        assertEquals("20240101", service.settleDetailParams.get("begin_date"));
+        assertEquals("20240102", service.settleDetailParams.get("end_date"));
+    }
+
+    @Test
+    public void querySettleDetailRejectsDateRangeOver31Days() {
+        TestableAdapayPayService service = new TestableAdapayPayService(baseConfig(null));
+
+        try {
+            service.querySettleDetail("member_1", "settle_1",
+                    DateUtils.parseDate("2024-01-01", DateUtils.YYYY_MM_DD),
+                    DateUtils.parseDate("2024-02-02", DateUtils.YYYY_MM_DD));
+            fail("expected PayErrorException for date range over 31 days");
+        } catch (PayErrorException e) {
+            assertTrue(e.getMessage().contains("31"));
+        }
+    }
+
+    @Test
+    public void querySettleDetailReturnsEmptyDetailsWithoutError() {
+        TestableAdapayPayService service = new TestableAdapayPayService(baseConfig(null));
+        Map<String, Object> emptyResult = new HashMap<String, Object>();
+        emptyResult.put("object", "list");
+        emptyResult.put("status", "succeeded");
+        emptyResult.put("settle_details", new ArrayList<Map<String, Object>>());
+        service.settleDetailResult = emptyResult;
+
+        Map<String, Object> result = service.querySettleDetail("member_1", null,
+                DateUtils.parseDate("2024-01-01", DateUtils.YYYY_MM_DD),
+                DateUtils.parseDate("2024-01-01", DateUtils.YYYY_MM_DD));
+
+        assertEquals("succeeded", result.get("status"));
+        assertTrue(((List<?>) result.get("settle_details")).isEmpty());
+    }
+
+    @Test
+    public void querySettleDetailPreservesAdaPayFailureCodeAndMessage() {
+        TestableAdapayPayService service = new TestableAdapayPayService(baseConfig(null));
+        Map<String, Object> failureResult = new HashMap<String, Object>();
+        failureResult.put("object", "list");
+        failureResult.put("status", "failed");
+        failureResult.put("error_code", "invalid_param");
+        failureResult.put("error_msg", "member_id is invalid");
+        service.settleDetailResult = failureResult;
+
+        Map<String, Object> result = service.querySettleDetail("member_1", null,
+                DateUtils.parseDate("2024-01-01", DateUtils.YYYY_MM_DD),
+                DateUtils.parseDate("2024-01-01", DateUtils.YYYY_MM_DD));
+
+        assertEquals("failed", result.get("status"));
+        assertEquals("invalid_param", result.get("error_code"));
+        assertEquals("member_id is invalid", result.get("error_msg"));
+    }
+
     private static AdapayPayConfigStorage baseConfig(String publicKey) {
         AdapayPayConfigStorage config = new AdapayPayConfigStorage();
         config.setAppId("app_test");
@@ -299,6 +393,8 @@ public class AdapayUnitTest {
         private Map<String, Object> paymentConfirmParams;
         private Map<String, Object> paymentConfirmQueryParams;
         private Map<String, Object> paymentConfirmQueryListParams;
+        private Map<String, Object> settleDetailParams;
+        private Map<String, Object> settleDetailResult = defaultSettleDetailResult();
 
         TestableAdapayPayService(AdapayPayConfigStorage payConfigStorage) {
             super(payConfigStorage);
@@ -380,6 +476,12 @@ public class AdapayUnitTest {
         }
 
         @Override
+        protected Map<String, Object> querySettleDetails(Map<String, Object> params) {
+            settleDetailParams = new HashMap<String, Object>(params);
+            return settleDetailResult;
+        }
+
+        @Override
         protected Map<String, Object> createReverse(Map<String, Object> params) {
             reverseParams = params;
             Map<String, Object> result = new HashMap<String, Object>();
@@ -391,6 +493,27 @@ public class AdapayUnitTest {
             result.put("confirmed_amt", "0.00");
             result.put("refunded_amt", "0.00");
             result.put("status", "succeeded");
+            return result;
+        }
+
+        private static Map<String, Object> defaultSettleDetailResult() {
+            Map<String, Object> detail = new HashMap<String, Object>();
+            detail.put("card_name", "测试商户");
+            detail.put("card_no", "130234****8399");
+            detail.put("settle_date", "20191014");
+            detail.put("settle_amt", "6.98");
+            detail.put("settle_fee_amt", "0.00");
+            detail.put("settle_stat", "succeeded");
+            detail.put("settle_type", "T1");
+            detail.put("settle_message", "");
+
+            List<Map<String, Object>> details = new ArrayList<Map<String, Object>>();
+            details.add(detail);
+            Map<String, Object> result = new HashMap<String, Object>();
+            result.put("object", "list");
+            result.put("prod_mode", "true");
+            result.put("status", "succeeded");
+            result.put("settle_details", details);
             return result;
         }
     }
