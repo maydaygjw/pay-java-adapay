@@ -36,6 +36,8 @@ import java.util.List;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Adapay支付服务
@@ -44,6 +46,8 @@ import java.util.Map;
  * @author egan
  */
 public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
+
+    private static final Logger ADAPAY_LOG = LoggerFactory.getLogger(AdapayPayService.class);
 
     /**
      * 构造函数
@@ -1241,70 +1245,87 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
     }
 
     protected Map<String, Object> createPayment(Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("createPayment", params);
         return Payment.create(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> createCheckout(Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("createCheckout", params);
         return Checkout.create(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> queryPayment(String paymentId) throws BaseAdaPayException {
+        logRequest("queryPayment", paymentId);
         return Payment.query(paymentId, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> queryPaymentList(Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("queryPaymentList", params);
         return Payment.queryList(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> closePayment(Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("closePayment", params);
         return Payment.close(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> createRefund(String paymentId, Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("createRefund", params);
         return Refund.create(paymentId, params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> queryRefund(Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("queryRefund", params);
         return Refund.query(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> downloadAdapayBill(Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("downloadAdapayBill", params);
         return Bill.download(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> createPaymentConfirm(Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("createPaymentConfirm", params);
         return PaymentConfirm.create(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> queryPaymentConfirm(Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("queryPaymentConfirm", params);
         return PaymentConfirm.query(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> queryPaymentConfirmList(Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("queryPaymentConfirmList", params);
         return PaymentConfirm.queryList(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> createPaymentReverse(Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("createPaymentReverse", params);
         return Payment.createReverse(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> createReverse(Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("createReverse", params);
         return PaymentReverse.create(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> queryPaymentReverse(Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("queryPaymentReverse", params);
         return Payment.queryReverse(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> queryPaymentReverseList(Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("queryPaymentReverseList", params);
         return Payment.queryReverseList(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> deleteSettleAccount(Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("deleteSettleAccount", params);
         return SettleAccount.delete(params, payConfigStorage.getMerchantKey());
     }
 
     protected Map<String, Object> querySettleDetails(Map<String, Object> params) throws BaseAdaPayException {
+        logRequest("querySettleDetails", params);
         return SettleAccount.detail(params, payConfigStorage.getMerchantKey());
     }
 
@@ -1312,7 +1333,11 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
         synchronized (AdapayPayConfigStorage.class) {
             try {
                 payConfigStorage.initAdapayConfig();
-                return invoker.invoke();
+                T result = invoker.invoke();
+                if (ADAPAY_LOG.isDebugEnabled()) {
+                    ADAPAY_LOG.debug("Adapay response: {}", sanitizeForLog(result));
+                }
+                return result;
             } catch (PayErrorException e) {
                 throw e;
             } catch (BaseAdaPayException e) {
@@ -1321,6 +1346,38 @@ public class AdapayPayService extends BasePayService<AdapayPayConfigStorage> {
                 throw new PayErrorException(new PayException("-1", errorMessage + ": " + e.getMessage()));
             }
         }
+    }
+
+    private static void logRequest(String operation, Object request) {
+        if (ADAPAY_LOG.isDebugEnabled()) {
+            ADAPAY_LOG.debug("Adapay request [{}]: {}", operation, sanitizeForLog(request));
+        }
+    }
+
+    /** Mask credential and signature fields before writing SDK payloads to logs. */
+    private static Object sanitizeForLog(Object value) {
+        if (value instanceof Map) {
+            Map<?, ?> source = (Map<?, ?>) value;
+            Map<Object, Object> sanitized = new HashMap<Object, Object>();
+            for (Map.Entry<?, ?> entry : source.entrySet()) {
+                String key = String.valueOf(entry.getKey());
+                if (key.toLowerCase().contains("key") || key.toLowerCase().contains("sign")
+                        || key.toLowerCase().contains("token") || key.toLowerCase().contains("cert")) {
+                    sanitized.put(entry.getKey(), "[REDACTED]");
+                } else {
+                    sanitized.put(entry.getKey(), sanitizeForLog(entry.getValue()));
+                }
+            }
+            return sanitized;
+        }
+        if (value instanceof Iterable) {
+            List<Object> sanitized = new ArrayList<Object>();
+            for (Object item : (Iterable<?>) value) {
+                sanitized.add(sanitizeForLog(item));
+            }
+            return sanitized;
+        }
+        return value;
     }
 
     private static String getString(Map<String, Object> map, String key) {
